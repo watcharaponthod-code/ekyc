@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -62,8 +63,17 @@ export type EKYCCameraProps = {
   debug?: boolean
 }
 
+/** Last few diagnostic lines, kept so a phone with no cable can still show why. */
+const RECENT_LOG: string[] = []
+/** Set by the mounted EKYCCamera so module-level `log` can reach the server. */
+let remoteSink: ((message: string, detail?: string) => void) | null = null
 function log(message: string, detail?: unknown): void {
-  if (__DEV__) console.warn(`[ekyc] ${message}`, detail ?? '')
+  const text = detail === undefined ? undefined : detail instanceof Error ? `${detail.name}: ${detail.message}` : String(detail)
+  const line = `${new Date().toISOString().slice(11, 19)} ${message}${text ? ` ${text}` : ''}`
+  RECENT_LOG.push(line)
+  if (RECENT_LOG.length > 12) RECENT_LOG.shift()
+  if (__DEV__) console.warn(`[ekyc] ${line}`)
+  remoteSink?.(message, text)
 }
 
 type Screen =
@@ -108,6 +118,15 @@ export function EKYCCamera({
   const [reduceMotion, setReduceMotion] = useState(false)
   const [live, setLive] = useState<FaceSignal | null>(null)
 
+  // Host callbacks through refs: apps pass inline arrows, whose identity
+  // changes every render. Nothing internal may depend on them directly, or the
+  // session — created once — ends up talking to stale closures.
+  const onResultRef = useRef(onResult)
+  onResultRef.current = onResult
+  const onProgressRef = useRef(onProgress)
+  onProgressRef.current = onProgress
+
+  const handleEventRef = useRef<(event: SessionEvent) => void>(() => {})
   const remote = useRef<CreatedSession | null>(null)
   const session = useRef<LivenessSession | null>(null)
   const frames = useRef<Map<string, string>>(new Map())
@@ -130,6 +149,24 @@ export function EKYCCamera({
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {})
   }, [])
 
+  // Every diagnostic line the screen produces is also sent to the server, so a
+  // phone in someone's hand and the server it talks to share one log.
+  useEffect(() => {
+    const device = `${Platform.OS} ${Platform.Version}`
+    remoteSink = (message, detail) =>
+      client.clientLog({
+        device,
+        level: 'info',
+        message,
+        ...(detail ? { detail } : {}),
+        ...(remote.current ? { session: remote.current.sessionId } : {}),
+      })
+    log('mounted', `${purpose} tier=${tier}`)
+    return () => {
+      remoteSink = null
+    }
+  }, [client, purpose, tier])
+
   // ---- capture -----------------------------------------------------------
 
   const capture = useCallback(
@@ -143,7 +180,9 @@ export function EKYCCamera({
           {},
         )
         frames.current.set(key, photo.filePath)
-      } catch {
+        log('captured', key)
+      } catch (error) {
+        log('capture failed', (error as Error).message)
         session.current?.abort('captureFailed')
       } finally {
         capturing.current = false
@@ -175,13 +214,13 @@ export function EKYCCamera({
       if (decision.decision === 'pass') hapticSuccess()
       else hapticFailure()
       setScreen({ kind: 'result', passed: decision.decision === 'pass', reasons: decision.reasons })
-      onResult(decision)
+      onResultRef.current(decision)
     } catch (error) {
       hapticFailure()
       const code = (error as { code?: string }).code ?? 'NETWORK'
       setScreen({ kind: 'result', passed: false, reasons: [code] })
     }
-  }, [client, width, height, onResult])
+  }, [client, width, height])
 
   // ---- session lifecycle -------------------------------------------------
 
@@ -199,6 +238,9 @@ export function EKYCCamera({
         tier,
       } as never)
       remote.current = created
+      log('session', `${created.sessionId.slice(0, 10)} ${created.challenges.join(',')}`)
+      log('camera', device ? `${device.position} ${device.id}` : 'NO DEVICE')
+      log('permission', String(hasPermission))
 
       const challenges = buildChallenges(created.challenges as ChallengeName[], tuning)
       const now = Date.now()
@@ -212,16 +254,15 @@ export function EKYCCamera({
           perStepTimeoutMs: created.policy.perStepTimeoutMs,
           totalTimeoutMs: created.policy.totalTimeoutMs,
         },
-        handleEvent,
+        (event) => handleEventRef.current(event),
       )
       session.current = next
       setState(next.start(now))
       setScreen({ kind: 'capturing' })
     } catch (error) {
+      log('createSession failed', (error as Error).message)
       setScreen({ kind: 'error', message: (error as Error).message })
     }
-    // handleEvent is stable via refs; re-creating it would restart the session.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, purpose, personId, displayName, tier, tuning])
 
   const handleEvent = useCallback(
@@ -253,22 +294,36 @@ export function EKYCCamera({
         void submit()
         return
       }
+      log('liveness failed', event.reason)
       hapticFailure()
       setScreen({ kind: 'result', passed: false, reasons: [`LOCAL_${event.reason}`] })
     },
     [capture, submit],
   )
 
+  // Start once permission is granted — and only then. This effect must not
+  // depend on `begin`: `begin` closes over props like `tuning`, which host apps
+  // routinely pass as fresh object literals, so its identity changes on every
+  // parent render. With `begin` in the deps the cleanup aborted the running
+  // session and restarted it each time the host re-rendered, which on a phone
+  // (busier than an emulator) surfaced as an immediate "error" screen.
+  const beginRef = useRef(begin)
+  beginRef.current = begin
+  handleEventRef.current = handleEvent
+  const started = useRef(false)
   useEffect(() => {
     if (!hasPermission) {
+      started.current = false
       void requestPermission()
       return
     }
-    void begin()
+    if (started.current) return
+    started.current = true
+    void beginRef.current()
     return () => {
       session.current?.abort('cancelled')
     }
-  }, [hasPermission, requestPermission, begin])
+  }, [hasPermission, requestPermission])
 
   // ---- per-frame ---------------------------------------------------------
 
@@ -281,9 +336,9 @@ export function EKYCCamera({
       if (debug) setLive(signal)
       const next = current.feed(signal)
       setState(next)
-      onProgress?.(next)
+      onProgressRef.current?.(next)
     },
-    [debug, onProgress],
+    [debug],
   )
 
   // Created exactly once, via the factory rather than `useFaceDetectorOutput`.
@@ -310,6 +365,7 @@ export function EKYCCamera({
         onError: (error: Error) => {
           log('face detector error', error)
           session.current?.abort('captureFailed')
+          setScreen({ kind: 'error', message: `FaceDetector: ${error.message}` })
         },
       }),
     [],
@@ -337,13 +393,30 @@ export function EKYCCamera({
   }
 
   if (!hasPermission) {
-    return <Notice theme={theme} text={t.framing.noFace} action={t.result.retry} onPress={() => void requestPermission()} />
+    return (
+      <Notice
+        theme={theme}
+        text={t.errors.cameraPermission}
+        action={t.result.retry}
+        onPress={() => void requestPermission()}
+      />
+    )
   }
   if (!device) {
-    return <Notice theme={theme} text={t.localFailure.captureFailed} action={t.result.cancel} onPress={onCancel} />
+    return <Notice theme={theme} text={t.errors.noCamera} action={t.result.cancel} onPress={onCancel} />
   }
   if (screen.kind === 'error') {
-    return <Notice theme={theme} text={screen.message} action={t.result.retry} onPress={() => void begin()} />
+    return (
+      <Notice
+        theme={theme}
+        text={[t.errors.generic, screen.message, RECENT_LOG.join(String.fromCharCode(10))].join(String.fromCharCode(10) + String.fromCharCode(10))}
+        action={t.result.retry}
+        onPress={() => {
+          started.current = false
+          void beginRef.current()
+        }}
+      />
+    )
   }
 
   const holding = state.holdProgress > 0.05
@@ -360,6 +433,14 @@ export function EKYCCamera({
           device={device}
           isActive={screen.kind === 'capturing' && state.phase === 'running'}
           outputs={outputs}
+          onError={(error) => {
+            // A camera that will not start is not a liveness failure; show
+            // the real message so a device-specific problem can be diagnosed
+            // from a screenshot instead of a generic "something went wrong".
+            log('camera error', error)
+            session.current?.abort('captureFailed')
+            setScreen({ kind: 'error', message: `${error.name}: ${error.message}` })
+          }}
         />
       </View>
 
@@ -420,11 +501,11 @@ export function EKYCCamera({
             )}
           </View>
 
-          {debug && live ? (
+          {debug ? (
             <Text style={[styles.debug, { color: theme.colors.textDim }]}>
-              {`yaw ${live.yaw.toFixed(1)}  pitch ${live.pitch.toFixed(1)}  eyes ${live.leftEye.toFixed(
-                2,
-              )}/${live.rightEye.toFixed(2)}  w ${live.box.w.toFixed(2)}  n=${live.count}`}
+              {(live
+                ? `yaw ${live.yaw.toFixed(1)}  pitch ${live.pitch.toFixed(1)}  eyes ${live.leftEye.toFixed(2)}/${live.rightEye.toFixed(2)}  w ${live.box.w.toFixed(2)}  n=${live.count}`
+                : 'no frames yet') + String.fromCharCode(10) + RECENT_LOG.slice(-4).join(String.fromCharCode(10))}
             </Text>
           ) : null}
         </View>

@@ -192,6 +192,28 @@ def _apply_outcome(db: Session, record, embedding, response: DecisionResponse) -
     response.match = MatchResult(ok=True, score=round(score, 4))
 
 
+@app.post("/v1/client-log", status_code=204)
+def client_log(entry: dict) -> None:
+    """Diagnostics from the phone.
+
+    A device in the field has no cable. Anything the capture screen logs is
+    also POSTed here, so a failure on a phone shows up in the same server log
+    as the decision it did (or did not) lead to. Whitelisted keys only — this
+    is a log sink, not an input.
+    """
+    # `level` is log_event's own severity parameter; the client's string goes
+    # under `severity` so it cannot collide.
+    allowed = {
+        "device": entry.get("device"),
+        "severity": entry.get("level"),
+        "message": entry.get("message"),
+        "detail": entry.get("detail"),
+        "session": entry.get("session"),
+        "at": entry.get("at"),
+    }
+    log_event("client", **{k: str(v)[:500] for k, v in allowed.items() if v is not None})
+
+
 @app.get("/v1/persons", response_model=list[PersonOut])
 def list_persons(db: Annotated[Session, Depends(get_db)]) -> list[PersonOut]:
     return [

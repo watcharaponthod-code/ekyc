@@ -107,7 +107,11 @@ export const DEFAULT_SESSION_OPTIONS: SessionOptions = {
   captureAtProgress: 0.5,
   perStepTimeoutMs: 12_000,
   totalTimeoutMs: 60_000,
-  faceLostGraceMs: 1_200,
+  // Measured on device: the first frames arrive ~1 s after the camera opens
+  // and people take a moment to raise the phone to their face. 1.2 s failed
+  // sessions before the user had done anything; the per-step timeout still
+  // bounds the total wait.
+  faceLostGraceMs: 4_000,
   minFaceRatio: 0.22,
   maxFaceRatio: 0.75,
   maxOffCentre: 0.18,

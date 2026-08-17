@@ -103,6 +103,14 @@ export class EKYCClient {
     return this.json('GET', '/v1/health')
   }
 
+  /** Fire-and-forget diagnostic line. Never throws, never awaited by callers. */
+  clientLog(entry: { device: string; level: string; message: string; detail?: string; session?: string }): void {
+    void this.json<unknown>('POST', '/v1/client-log', {
+      body: JSON.stringify({ ...entry, at: Date.now() }),
+      headers: { 'Content-Type': 'application/json' },
+    }).catch(() => {})
+  }
+
   // -------------------------------------------------------------------------
 
   private async json<T>(

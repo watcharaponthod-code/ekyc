@@ -35,6 +35,7 @@ type Strings = {
   /** Advice per server reason code — the "what to do differently" screen. */
   reason: Record<string, string>
   localFailure: Record<FailureReason, string>
+  errors: { cameraPermission: string; noCamera: string; generic: string }
   a11y: { preview: string; progress: (step: number, total: number) => string }
 }
 
@@ -101,6 +102,11 @@ const th: Strings = {
     multipleFaces: 'มีมากกว่าหนึ่งใบหน้าในกรอบ',
     captureFailed: 'ถ่ายภาพไม่สำเร็จ ลองใหม่อีกครั้ง',
     cancelled: 'ยกเลิกการสแกน',
+  },
+  errors: {
+    cameraPermission: 'ต้องอนุญาตให้ใช้กล้องก่อน จึงจะยืนยันตัวตนได้',
+    noCamera: 'ไม่พบกล้องหน้าในเครื่องนี้',
+    generic: 'เปิดกล้องไม่สำเร็จ',
   },
   a11y: {
     preview: 'ภาพจากกล้องหน้า สำหรับยืนยันตัวตน',
@@ -172,6 +178,11 @@ const en: Strings = {
     multipleFaces: 'More than one face in the frame.',
     captureFailed: "We couldn't take the photo. Try again.",
     cancelled: 'Scan cancelled',
+  },
+  errors: {
+    cameraPermission: 'Camera access is required to verify your identity.',
+    noCamera: 'No front camera was found on this device.',
+    generic: 'The camera could not be started.',
   },
   a11y: {
     preview: 'Front camera preview for identity verification',

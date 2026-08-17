@@ -121,13 +121,13 @@ describe('LivenessSession — framing', () => {
 describe('LivenessSession — failures', () => {
   it('tolerates a brief face loss', () => {
     const { session } = makeSession(['closeEyes'])
-    feedFor(session, { count: 0 }, 900, 0)
+    feedFor(session, { count: 0 }, 3000, 0)
     expect(session.state.phase).toBe('running')
   })
 
   it('fails when the face is gone past the grace period', () => {
     const { session, events } = makeSession(['closeEyes'])
-    feedFor(session, { count: 0 }, 2000, 0)
+    feedFor(session, { count: 0 }, 5000, 0)
     expect(session.state.phase).toBe('failed')
     expect(session.state.reason).toBe('faceLost')
     expect(events.at(-1)).toEqual({ type: 'failed', reason: 'faceLost' })
@@ -135,14 +135,14 @@ describe('LivenessSession — failures', () => {
 
   it('fails with its own reason when a second face lingers', () => {
     const { session } = makeSession(['closeEyes'])
-    feedFor(session, { count: 2 }, 2000, 0)
+    feedFor(session, { count: 2 }, 5000, 0)
     expect(session.state.reason).toBe('multipleFaces')
   })
 
   it('restarts the grace clock when the failure mode changes', () => {
     const { session } = makeSession(['closeEyes'])
-    let t = feedFor(session, { count: 0 }, 1000, 0)
-    t = feedFor(session, { count: 2 }, 1000, t)
+    let t = feedFor(session, { count: 0 }, 3000, 0)
+    t = feedFor(session, { count: 2 }, 3000, t)
     expect(session.state.phase).toBe('running')
   })
 
@@ -167,9 +167,9 @@ describe('LivenessSession — failures', () => {
 
   it('ignores frames once it has failed', () => {
     const { session, events } = makeSession(['closeEyes'])
-    feedFor(session, { count: 0 }, 2000, 0)
+    feedFor(session, { count: 0 }, 5000, 0)
     const after = events.length
-    feedFor(session, CENTERED, 2000, 3000)
+    feedFor(session, CENTERED, 2000, 6000)
     expect(events.length).toBe(after)
     expect(session.state.phase).toBe('failed')
   })

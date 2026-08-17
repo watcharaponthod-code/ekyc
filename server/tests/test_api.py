@@ -195,3 +195,16 @@ class TestHealth:
         body = client.get("/v1/health").json()
         assert body["status"] == "ok"
         assert body["backend"] == "fake"
+
+
+class TestClientLog:
+    def test_it_accepts_a_phone_diagnostic_line(self, client):
+        response = client.post(
+            "/v1/client-log",
+            json={"device": "android 36", "level": "info", "message": "camera", "detail": "front 10"},
+        )
+        assert response.status_code == 204
+
+    def test_it_ignores_keys_it_does_not_know(self, client):
+        response = client.post("/v1/client-log", json={"message": "x", "embedding": [1, 2, 3]})
+        assert response.status_code == 204

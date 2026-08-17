@@ -102,6 +102,9 @@ export default function App() {
         theme={theme}
         onResult={handleResult}
         onCancel={() => setScreen({ kind: 'home' })}
+        // Live yaw/eye numbers + recent log on screen: the diagnostic the QA
+        // checklist asks for, and what a phone with no cable can still show.
+        debug
       />
     )
   }
