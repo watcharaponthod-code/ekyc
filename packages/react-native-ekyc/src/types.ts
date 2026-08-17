@@ -103,8 +103,11 @@ export type SessionOptions = {
 }
 
 export const DEFAULT_SESSION_OPTIONS: SessionOptions = {
-  holdMs: 700,
-  captureAtProgress: 0.5,
+  // Reported from a real phone: 700 ms felt like it demanded a slow, deliberate
+  // pose. 450 ms still gives the shutter (~150-400 ms) time to land while the
+  // pose is held, and lets a natural head turn count.
+  holdMs: 450,
+  captureAtProgress: 0.4,
   perStepTimeoutMs: 12_000,
   totalTimeoutMs: 60_000,
   // Measured on device: the first frames arrive ~1 s after the camera opens

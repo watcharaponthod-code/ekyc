@@ -155,11 +155,6 @@ describe('hintSide', () => {
     expect(hintSide('turnRight')).toBe('right')
   })
 
-  it('flips with yawSign, so the arrow and the words never disagree', () => {
-    expect(hintSide('turnLeft', -1)).toBe('right')
-    expect(hintSide('turnRight', -1)).toBe('left')
-  })
-
   it('shows nothing for steps that have no direction', () => {
     expect(hintSide('center')).toBeNull()
     expect(hintSide('closeEyes')).toBeNull()
@@ -168,9 +163,7 @@ describe('hintSide', () => {
   })
 
   it('never points both turns at the same side', () => {
-    for (const sign of [1, -1] as const) {
-      expect(hintSide('turnLeft', sign)).not.toBe(hintSide('turnRight', sign))
-    }
+    expect(hintSide('turnLeft')).not.toBe(hintSide('turnRight'))
   })
 })
 

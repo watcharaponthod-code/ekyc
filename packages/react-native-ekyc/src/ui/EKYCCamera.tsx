@@ -15,6 +15,7 @@ import {
   useCameraDevice,
   useCameraPermission,
   usePhotoOutput,
+  type CameraRef,
 } from 'react-native-vision-camera'
 import {
   createFaceDetectorOutput,
@@ -114,6 +115,13 @@ export function EKYCCamera({
   const { hasPermission, requestPermission } = useCameraPermission()
 
   const [screen, setScreen] = useState<Screen>({ kind: 'starting' })
+  // How stills are taken. `photo` adds an ImageCapture stream — the sharpest
+  // frames, and the only option on iOS. Some Android front cameras (LIMITED /
+  // LEGACY hardware) refuse a third stream alongside preview + analysis with
+  // "Failed to apply the stream configuration"; on those we drop to
+  // `snapshot`, which reads the preview surface and needs no extra stream.
+  const [captureMode, setCaptureMode] = useState<'photo' | 'snapshot'>('photo')
+  const cameraRef = useRef<CameraRef>(null)
   const [state, setState] = useState<LivenessState>(idleState)
   const [reduceMotion, setReduceMotion] = useState(false)
   const [live, setLive] = useState<FaceSignal | null>(null)
@@ -138,7 +146,13 @@ export function EKYCCamera({
   const submitted = useRef(false)
 
   const photoOutput = usePhotoOutput({
-    targetResolution: CommonResolutions.HD_4_3,
+    // 16:9, the same aspect the face detector's ImageAnalysis stream asks for
+    // (1280x720). Mixing a 4:3 capture with a 16:9 analysis stream on top of
+    // the preview is a three-stream, two-aspect configuration that front
+    // cameras on LIMITED/LEGACY hardware refuse outright — seen on a real
+    // Android 35 phone as "Failed to apply the stream configuration for the
+    // given outputs". Matching aspects lets CameraX share a stream group.
+    targetResolution: CommonResolutions.HD_16_9,
     quality: 0.9,
     // Speed matters more than the last few percent of detail: the shutter
     // fires mid-hold, and a slow one lets the pose lapse before it lands.
@@ -174,13 +188,22 @@ export function EKYCCamera({
       if (capturing.current) return
       capturing.current = true
       try {
-        const photo = await photoOutput.capturePhotoToFile(
-          // No shutter sound: not one surveyed identity SDK plays audio here.
-          { enableShutterSound: false, flashMode: 'off' },
-          {},
-        )
-        frames.current.set(key, photo.filePath)
-        log('captured', key)
+        let path: string
+        if (captureMode === 'photo') {
+          const photo = await photoOutput.capturePhotoToFile(
+            // No shutter sound: not one surveyed identity SDK plays audio here.
+            { enableShutterSound: false, flashMode: 'off' },
+            {},
+          )
+          path = photo.filePath
+        } else {
+          const camera = cameraRef.current
+          if (!camera) throw new Error('camera not mounted')
+          const image = await camera.takeSnapshot()
+          path = await image.saveToTemporaryFileAsync('jpg', 90)
+        }
+        frames.current.set(key, path)
+        log('captured', `${key} via ${captureMode}`)
       } catch (error) {
         log('capture failed', (error as Error).message)
         session.current?.abort('captureFailed')
@@ -188,7 +211,7 @@ export function EKYCCamera({
         capturing.current = false
       }
     },
-    [photoOutput],
+    [photoOutput, captureMode],
   )
 
   // ---- upload ------------------------------------------------------------
@@ -239,7 +262,12 @@ export function EKYCCamera({
       } as never)
       remote.current = created
       log('session', `${created.sessionId.slice(0, 10)} ${created.challenges.join(',')}`)
-      log('camera', device ? `${device.position} ${device.id}` : 'NO DEVICE')
+      log(
+        'camera',
+        device
+          ? `${device.position} ${device.id} ${device.manufacturer} ${device.modelID} formats=${device.supportedPixelFormats.join('/')}`
+          : 'NO DEVICE',
+      )
       log('permission', String(hasPermission))
 
       const challenges = buildChallenges(created.challenges as ChallengeName[], tuning)
@@ -371,7 +399,10 @@ export function EKYCCamera({
     [],
   )
 
-  const outputs = useMemo(() => [detectorOutput, photoOutput], [detectorOutput, photoOutput])
+  const outputs = useMemo(
+    () => (captureMode === 'photo' ? [detectorOutput, photoOutput] : [detectorOutput]),
+    [detectorOutput, photoOutput, captureMode],
+  )
 
 
   // ---- render ------------------------------------------------------------
@@ -433,11 +464,26 @@ export function EKYCCamera({
           device={device}
           isActive={screen.kind === 'capturing' && state.phase === 'running'}
           outputs={outputs}
+          ref={cameraRef}
+          // `PreviewView.bitmap` — what takeSnapshot() reads — is null on a
+          // SurfaceView. TextureView costs a little GPU headroom, which we
+          // can afford, and makes the snapshot path actually work.
+          implementationMode={captureMode === 'snapshot' ? 'compatible' : 'performance'}
           onError={(error) => {
-            // A camera that will not start is not a liveness failure; show
-            // the real message so a device-specific problem can be diagnosed
-            // from a screenshot instead of a generic "something went wrong".
             log('camera error', error)
+            const streamConfigFailed = /stream configuration/i.test(error.message)
+            if (streamConfigFailed && captureMode === 'photo' && Platform.OS === 'android') {
+              // This camera cannot run preview + analysis + capture together.
+              // Drop the capture stream and take stills from the preview
+              // instead. The session keeps running — the outputs prop change
+              // reconfigures the camera in place.
+              log('capture mode', 'photo -> snapshot (device rejected 3 streams)')
+              setCaptureMode('snapshot')
+              return
+            }
+            // A camera that will not start is not a liveness failure; show the
+            // real message so a device-specific problem can be diagnosed from
+            // a screenshot or the server log.
             session.current?.abort('captureFailed')
             setScreen({ kind: 'error', message: `${error.name}: ${error.message}` })
           }}
@@ -462,7 +508,6 @@ export function EKYCCamera({
           height={height}
           theme={theme}
           reduceMotion={reduceMotion}
-          yawSign={tuning?.turn?.yawSign ?? 1}
         />
       ) : null}
 

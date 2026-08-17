@@ -40,6 +40,8 @@ import type {
   Framing,
   LivenessState,
 } from '@ekyc/react-native-ekyc/src/types'
+import { FaceMesh } from './web/FaceMesh'
+import { useWebcamFace } from './web/useWebcamFace'
 
 const theme = defaultTheme
 const FPS = 20
@@ -129,6 +131,15 @@ export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
   const [state, setState] = useState<LivenessState | null>(null)
   const [framing, setFraming] = useState<keyof typeof FRAMING_OVERRIDES>('ok')
   const [paused, setPaused] = useState(false)
+  // 'webcam' drives the real LivenessSession from MediaPipe on your webcam —
+  // turn your head, close your eyes, and the same rules the phone uses decide.
+  // 'simulated' feeds a compliant signal, for reviewing the UI without a camera.
+  const [source, setSource] = useState<'webcam' | 'simulated'>(
+    typeof navigator !== 'undefined' && !!navigator.mediaDevices ? 'webcam' : 'simulated',
+  )
+  const cam = useWebcamFace(source === 'webcam' && mode === 'capture')
+  const camRef = useRef(cam)
+  camRef.current = cam
 
   const session = useRef<LivenessSession | null>(null)
   const clock = useRef(0)
@@ -144,15 +155,21 @@ export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
       if (event.type === 'failed') setTimeout(() => setMode('fail'), 400)
     })
     session.current = next
-    setState(next.start(0))
+    setState(next.start(source === 'webcam' ? Date.now() : 0))
     setMode('capture')
-  }, [])
+  }, [source])
 
   useEffect(() => {
     if (mode !== 'capture' || frozen) return
     const timer = setInterval(() => {
       const current = session.current
       if (!current || pausedRef.current) return
+      if (source === 'webcam') {
+        const live = camRef.current.signal
+        if (!live) return
+        setState(current.feed({ ...live, t: Date.now() }))
+        return
+      }
       clock.current += TICK_MS
       const challenge = current.state.challenge
       const signal = {
@@ -163,7 +180,7 @@ export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
       setState(current.feed(signal))
     }, TICK_MS)
     return () => clearInterval(timer)
-  }, [mode, frozen])
+  }, [mode, frozen, source])
 
   if (mode === 'intro') {
     return <IntroView locale={locale} theme={theme} onStart={start} />
@@ -209,8 +226,14 @@ export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
 
+      {source === 'webcam' && cam.video ? (
+        <WebVideo video={cam.video} width={width} height={height} />
+      ) : null}
+      {source === 'webcam' ? (
+        <FaceMesh points={cam.mesh} connections={cam.connections} width={width} height={height} />
+      ) : null}
       {/* Stand-in for the camera preview, so the oval has something to cut out of. */}
-      <View style={styles.fakePreview}>
+      <View style={[styles.fakePreview, source === 'webcam' && { opacity: 0 }]}>
         <View
           style={[
             styles.silhouette,
@@ -244,7 +267,15 @@ export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
 
       <View style={styles.hud} pointerEvents="box-none">
         <View style={styles.top} pointerEvents="box-none">
-          <Text style={styles.badge}>PREVIEW · ไม่ใช้กล้องจริง</Text>
+          <Text style={styles.badge}>
+            {source === 'webcam'
+              ? cam.status === 'running'
+                ? `WEBCAM · MediaPipe · ${cam.signal ? `yaw ${cam.signal.yaw.toFixed(0)}° eyes ${cam.signal.leftEye.toFixed(2)}` : '…'}`
+                : cam.status === 'error'
+                  ? `กล้องเปิดไม่ได้: ${cam.error ?? ''}`
+                  : 'กำลังโหลด MediaPipe…'
+              : 'PREVIEW · สัญญาณจำลอง'}
+          </Text>
         </View>
 
         <View style={styles.bottom} pointerEvents="box-none">
@@ -266,6 +297,11 @@ export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.controls}
           >
+            <Chip
+              label={source === 'webcam' ? '📷 เว็บแคม' : '🤖 จำลอง'}
+              active
+              onPress={() => { setSource((s) => (s === 'webcam' ? 'simulated' : 'webcam')); start() }}
+            />
             <Chip label={paused ? '▶ เล่นต่อ' : '⏸ หยุด'} onPress={() => setPaused((p) => !p)} />
             {(Object.keys(FRAMING_OVERRIDES) as (keyof typeof FRAMING_OVERRIDES)[]).map((key) => (
               <Chip
@@ -281,6 +317,21 @@ export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
       </View>
     </View>
   )
+}
+
+/** Mounts a live <video> element behind the RN tree. Web only. */
+function WebVideo({ video, width, height }: { video: HTMLVideoElement; width: number; height: number }) {
+  const host = useRef<View>(null)
+  useEffect(() => {
+    // react-native-web renders View as a div; attach the video element to it.
+    const el = host.current as unknown as HTMLElement | null
+    if (!el) return
+    video.style.cssText =
+      'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);'
+    el.appendChild(video)
+    return () => { video.remove() }
+  }, [video])
+  return <View ref={host} style={{ position: 'absolute', left: 0, top: 0, width, height, overflow: 'hidden' }} />
 }
 
 function Chip({

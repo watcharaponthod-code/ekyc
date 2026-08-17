@@ -2,18 +2,22 @@ import type { ChallengeName, FaceSignal } from '../types'
 import { Challenge } from './Challenge'
 
 /**
- * Which way MLKit's `yawAngle` grows on this device/orientation.
+ * Which way ML Kit's `yawAngle` grows when the user turns to *their own* left.
  *
- * The front camera preview is mirrored, ML Kit's sign convention has flipped
- * between releases, and none of it is worth guessing. Calibrate once on a real
- * device with `<EKYCCamera debug />`, which prints live yaw, and set this.
+ * Calibrated on a real Android phone (Android 35, front camera): ML Kit
+ * reports **positive** yaw for a turn to the user's left, so `TurnLeft` must
+ * accept positive values — hence -1 under the convention below (`yaw * sign
+ * <= -minYaw`). Left as a knob because ML Kit's sign has flipped between
+ * releases; re-check with `<EKYCCamera debug />` if instructions ever point
+ * the wrong way. The web preview's MediaPipe adapter mirrors its yaw so the
+ * same value works there.
  *
  * The server does not depend on this at all: it verifies that the two turns
  * went in *opposite* directions without naming either one (see the design
  * spec, "convention-free pose verification"). So getting it wrong costs you a
  * confusing instruction, not a security hole.
  */
-export const DEFAULT_YAW_SIGN: 1 | -1 = 1
+export const DEFAULT_YAW_SIGN: 1 | -1 = -1
 
 export type CenterOptions = {
   /** Max |yaw| and |pitch| in degrees that still counts as facing the camera. */
@@ -83,7 +87,7 @@ export class TurnLeftChallenge extends Challenge {
   }
 
   isSatisfied(signal: FaceSignal): boolean {
-    const { minYaw = 22, yawSign = DEFAULT_YAW_SIGN } = this.options
+    const { minYaw = 18, yawSign = DEFAULT_YAW_SIGN } = this.options
     return signal.yaw * yawSign <= -minYaw
   }
 }
@@ -96,7 +100,7 @@ export class TurnRightChallenge extends Challenge {
   }
 
   isSatisfied(signal: FaceSignal): boolean {
-    const { minYaw = 22, yawSign = DEFAULT_YAW_SIGN } = this.options
+    const { minYaw = 18, yawSign = DEFAULT_YAW_SIGN } = this.options
     return signal.yaw * yawSign >= minYaw
   }
 }

@@ -12,7 +12,7 @@ function makeSession(names: Parameters<typeof buildChallenges>[0] = ['closeEyes'
 
 const CENTERED = {}
 const EYES_SHUT = { leftEye: 0.05, rightEye: 0.05 }
-const TURNED_LEFT = { yaw: -30 }
+const TURNED_LEFT = { yaw: 30 } // positive = user's left, per the calibrated default sign
 
 describe('LivenessSession — happy path', () => {
   it('walks every step and completes', () => {

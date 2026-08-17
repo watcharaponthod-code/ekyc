@@ -12,11 +12,6 @@ export type DirectionHintProps = {
   height: number
   theme?: EKYCTheme
   reduceMotion?: boolean
-  /**
-   * Mirrors which side the arrows appear on. Matches `TurnOptions.yawSign`:
-   * flip both together if the preview is mirrored the other way.
-   */
-  yawSign?: 1 | -1
 }
 
 /** How far outside the oval the arrows sit. */
@@ -43,7 +38,6 @@ export function DirectionHint({
   height,
   theme = defaultTheme,
   reduceMotion = false,
-  yawSign = 1,
 }: DirectionHintProps) {
   const progress = useRef(new Animated.Value(0)).current
 
@@ -82,7 +76,7 @@ export function DirectionHint({
     )
   }
 
-  const towardsLeft = hintSide(challenge, yawSign) === 'left'
+  const towardsLeft = hintSide(challenge) === 'left'
   const edgeX = towardsLeft ? geometry.cx - geometry.rx - OUTSET : geometry.cx + geometry.rx + OUTSET
 
   return (

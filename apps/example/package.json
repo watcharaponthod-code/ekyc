@@ -5,6 +5,7 @@
   "dependencies": {
     "@ekyc/react-native-ekyc": "*",
     "@expo/metro-runtime": "~57.0.10",
+    "@mediapipe/tasks-vision": "^1.0.1",
     "expo": "~57.0.13",
     "expo-haptics": "~57.0.1",
     "expo-secure-store": "~57.0.1",

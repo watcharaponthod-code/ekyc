@@ -45,14 +45,16 @@ describe('CloseEyesChallenge', () => {
 
 describe('turn challenges', () => {
   it('are mirror images of each other under the default sign', () => {
+    // Default sign is calibrated on a real Android phone: ML Kit reports
+    // POSITIVE yaw when the user turns to their own left.
     const left = new TurnLeftChallenge()
     const right = new TurnRightChallenge()
 
-    expect(left.isSatisfied(signal({ yaw: -30 }))).toBe(true)
-    expect(right.isSatisfied(signal({ yaw: -30 }))).toBe(false)
+    expect(left.isSatisfied(signal({ yaw: 30 }))).toBe(true)
+    expect(right.isSatisfied(signal({ yaw: 30 }))).toBe(false)
 
-    expect(right.isSatisfied(signal({ yaw: 30 }))).toBe(true)
-    expect(left.isSatisfied(signal({ yaw: 30 }))).toBe(false)
+    expect(right.isSatisfied(signal({ yaw: -30 }))).toBe(true)
+    expect(left.isSatisfied(signal({ yaw: -30 }))).toBe(false)
   })
 
   it('reject a head that has not turned far enough', () => {
@@ -60,10 +62,10 @@ describe('turn challenges', () => {
     expect(new TurnRightChallenge().isSatisfied(signal({ yaw: 10 }))).toBe(false)
   })
 
-  it('flip with yawSign, so a mirrored device is one config change', () => {
-    const left = new TurnLeftChallenge({ yawSign: -1 })
-    expect(left.isSatisfied(signal({ yaw: 30 }))).toBe(true)
-    expect(left.isSatisfied(signal({ yaw: -30 }))).toBe(false)
+  it('flip with yawSign, so a device with the opposite convention is one config change', () => {
+    const left = new TurnLeftChallenge({ yawSign: 1 })
+    expect(left.isSatisfied(signal({ yaw: -30 }))).toBe(true)
+    expect(left.isSatisfied(signal({ yaw: 30 }))).toBe(false)
   })
 })
 
@@ -92,6 +94,6 @@ describe('buildChallenges', () => {
 
   it('passes tuning through to the built challenges', () => {
     const [, turn] = buildChallenges(['turnLeft'], { turn: { minYaw: 5 } })
-    expect(turn!.isSatisfied(signal({ yaw: -6 }))).toBe(true)
+    expect(turn!.isSatisfied(signal({ yaw: 6 }))).toBe(true)
   })
 })
