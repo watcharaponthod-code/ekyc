@@ -59,10 +59,17 @@ npx expo install react-native-vision-camera react-native-vision-camera-face-dete
 | `react-native-svg` | ≥ 15 | the oval mask and hold ring |
 | `expo-haptics` | any | optional — silently skipped if absent |
 
-Add the camera permission (`app.json`):
+Declare the camera permission in `app.json`. VisionCamera v5 ships **no Expo
+config plugin** — listing one there makes `expo start` and `expo prebuild` fail
+outright — so set the platform keys directly:
 
 ```json
-{ "expo": { "plugins": [["react-native-vision-camera", { "cameraPermissionText": "ใช้กล้องหน้าเพื่อยืนยันตัวตนของคุณ" }]] } }
+{
+  "expo": {
+    "ios":     { "infoPlist": { "NSCameraUsageDescription": "ใช้กล้องหน้าเพื่อยืนยันตัวตนของคุณ" } },
+    "android": { "permissions": ["android.permission.CAMERA"] }
+  }
+}
 ```
 
 ML Kit ships no arm64 iOS simulator slice, so **test on a physical device**.
