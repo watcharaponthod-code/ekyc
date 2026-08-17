@@ -28,37 +28,56 @@ class Thresholds(BaseSettings):
     face_ratio_min: float = 0.22
 
     # --- presentation attack detection --------------------------------------
-    pad_min: float = 0.70
+    #: Measured: 30 live captures vs 40 screen-replay frames separate perfectly
+    #: with DeepFace's two-model MiniFASNet ensemble (AUC 1.000) — live min
+    #: 0.501, spoof max 0.393. 0.45 sits in the middle of that gap.
+    pad_min: float = 0.45
 
-    # --- pose ----------------------------------------------------------------
-    #: Sanity bound on the neutral frame. Deliberately loose: the raw yaw proxy
-    #: carries a per-person bias (LFW: |median| 0.18, p90 0.56) that says
-    #: nothing about pose. The client already gates |yaw| < 12 deg before
-    #: capturing, so this only has to reject a true profile shot.
-    neutral_yaw_max: float = 0.45
-    #: Minimum *change* from the neutral frame for a turn to count.
-    #: 0.30 ~ 25 deg under a simple head model (delta ~ 0.635*tan(theta)).
-    turn_yaw_min: float = 0.30
+    # --- pose (degrees) -------------------------------------------------------
+    #: Sanity bound on the neutral frame. Loose on purpose: it only has to
+    #: reject a true profile shot, because the client already gates
+    #: |yaw| < 12 deg before capturing, and because a resting head is rarely at
+    #: exactly zero.
+    #:
+    #: Sized for the default backend, whose pose comes from MediaPipe's
+    #: transformation matrix. Running `EKYC_BACKEND=onnx` means pose is
+    #: inferred from five points and carries about +/-13 deg of per-person
+    #: bias, so raise this to ~45 there — see test_ml_integration.py.
+    neutral_yaw_max_deg: float = 25.0
+    #: Minimum *change* in yaw from the neutral frame for a turn to count.
+    turn_yaw_min_deg: float = 22.0
 
     # --- eyes ----------------------------------------------------------------
+    #: Closed-eye frame must drop to this fraction of the subject's own neutral
+    #: eye-aspect-ratio.
     eye_closed_ratio: float = 0.65
-    #: `advisory` measures and logs the eye check but never fails on it alone;
-    #: `enforce` makes it a hard rule. Advisory is the default because the
-    #: metric has not been calibrated on matched open/closed captures yet —
-    #: see docs/ml-validation.md. Flip to `enforce` after Phase 6.
-    eye_rule: str = Field(default="advisory", pattern="^(advisory|enforce)$")
+    #: ...and be below this absolute EAR, which guards the case where the
+    #: neutral frame was itself captured mid-blink and so makes any ratio look
+    #: fine. Measured: open eyes on 20 LFW subjects sit at median 0.265 with
+    #: p10 0.131, so the floor has to stay under 0.13 or narrow-eyed people
+    #: would clear it with their eyes open. Truly shut lids score below 0.08.
+    ear_closed_max: float = 0.12
+    #: `enforce` makes the closed-eyes check a hard rule; `advisory` measures
+    #: and logs it without failing on it alone. Enforced by default now that
+    #: the metric is a real eye-aspect-ratio from MediaPipe eye contours rather
+    #: than an uncalibrated image statistic.
+    eye_rule: str = Field(default="enforce", pattern="^(advisory|enforce)$")
 
     # --- identity ------------------------------------------------------------
     #: Min pairwise cosine across the evidence frames. This is a *swap*
     #: detector, not a match: it must survive a real head turn.
     #:
-    #: Measured on LFW under conditions harsher than any session — a frontal
-    #: shot plus two extreme profiles (|yawProxy| up to 1.0), photographed years
-    #: apart: worst genuine 0.455, p5 0.505. Impostor frontal pairs top out at
-    #: 0.145. 0.30 sits in the middle of that empty band, with 2x headroom above
-    #: the worst impostor and 1.5x below the worst genuine.
-    consistency_min: float = 0.30
-    #: cosine required to call two faces the same person.
+    #: Measured with the DeepFace embedder on 20 LFW subjects: the worst
+    #: within-person pair scores 0.155 and p5 is 0.217, while impostor pairs
+    #: sit at a median of 0.065. Those genuine pairs are photographs taken
+    #: years apart at extreme angles, far harsher than two frames seconds
+    #: apart, so this bound is conservative by construction.
+    consistency_min: float = 0.25
+    #: Cosine required to call two faces the same person. Measured with the
+    #: DeepFace embedder over 60 genuine and 1710 impostor LFW pairs
+    #: (AUC 0.994): at 0.42, FAR is 0.06% and FRR 13%. The FRR is inflated by
+    #: LFW's cross-year, cross-pose pairs; two controlled selfies score far
+    #: higher. Raise to 0.50 for FAR 0% at the cost of a 23% retry rate.
     match_min: float = 0.42
 
     # --- timing plausibility -------------------------------------------------
@@ -80,8 +99,13 @@ class Settings(BaseSettings):
     #: privacy trade-off you must justify before enabling in production.
     retain_frames: str = Field(default="none", pattern="^(none|on_fail|all)$")
     frames_dir: Path = SERVER_ROOT / "retained_frames"
-    #: Set false to run the API with the fake backend (no model files needed).
-    use_onnx: bool = True
+    #: Which vision stack to run.
+    #: - `deepface`: MediaPipe Face Landmarker + DeepFace. The default.
+    #: - `onnx`: SCRFD + ArcFace + MiniFASNet via onnxruntime. No TensorFlow.
+    #: - `fake`: scripted values; for running the API with no models at all.
+    backend: str = Field(default="deepface", pattern="^(deepface|onnx|fake)$")
+    log_level: str = "INFO"
+    log_format: str = Field(default="text", pattern="^(text|json)$")
     version: str = "0.1.0"
 
 

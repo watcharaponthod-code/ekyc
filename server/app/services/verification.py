@@ -13,15 +13,19 @@ sessions.
 from __future__ import annotations
 
 import hashlib
+import logging
 
 import cv2
 import numpy as np
 
 from ..config import Thresholds
 from ..decision import DecisionInput, DecisionOutput, decide, required_frame_keys
+from ..logging_config import timed
 from ..ml.backend import FaceBackend, FrameFacts
-from ..ml.geometry import brightness, face_ratio, sharpness, yaw_proxy
+from ..ml.geometry import brightness, face_ratio, sharpness
 from ..schemas import EvidenceManifest
+
+log = logging.getLogger("ekyc.verification")
 
 MIN_SHORT_SIDE = 240
 MAX_FRAME_BYTES = 8 * 1024 * 1024
@@ -51,25 +55,89 @@ def decode_frame(raw: bytes) -> np.ndarray:
 
 
 def measure(backend: FaceBackend, key: str, image_bgr: np.ndarray) -> FrameFacts:
-    """Everything the rules need from one frame."""
+    """Everything the rules need from one frame.
+
+    When the backend can produce geometry, pose and eye openness in a single
+    pass — MediaPipe can — that path is taken, because running the landmarker
+    once per frame instead of three times is the difference between a snappy
+    check and a slow one.
+    """
+    analyze = getattr(backend, "analyze", None)
+    if callable(analyze):
+        return _measure_single_pass(backend, analyze, key, image_bgr)
+
     faces = backend.detect(image_bgr)
     if not faces:
         return FrameFacts(key=key, face_count=0)
 
     face = max(faces, key=lambda f: f.width)
     companions = sum(1 for f in faces if f.width >= face.width * COMPANION_WIDTH_RATIO)
+    yaw, pitch, roll = backend.pose(image_bgr, face.kps)
+
     return FrameFacts(
         key=key,
         face_count=companions,
         det_score=face.score,
         pad=backend.pad_score(image_bgr, face.bbox),
-        yaw_proxy=yaw_proxy(face.kps),
+        yaw=yaw,
+        pitch=pitch,
+        roll=roll,
         eye_openness=backend.eye_openness(image_bgr, face.bbox, face.kps),
         sharpness=sharpness(image_bgr, face.bbox),
         brightness=brightness(image_bgr, face.bbox),
         face_ratio=face_ratio(image_bgr, face.bbox),
         embedding=backend.embed(image_bgr, face.kps),
     )
+
+
+def _measure_single_pass(backend: FaceBackend, analyze, key: str, image_bgr: np.ndarray) -> FrameFacts:
+    with timed("measure.analyze", frame=key) as span:
+        faces = analyze(image_bgr)
+        span["faces"] = len(faces)
+
+    if not faces:
+        return FrameFacts(key=key, face_count=0)
+
+    face = max(faces, key=lambda f: f.width)
+    companions = sum(1 for f in faces if f.width >= face.width * COMPANION_WIDTH_RATIO)
+
+    with timed("measure.pad", frame=key) as span:
+        pad = backend.pad_score(image_bgr, face.bbox)
+        span["pad"] = round(pad, 4)
+
+    with timed("measure.embed", frame=key):
+        embedding = backend.embed(image_bgr, face.kps)
+
+    facts = FrameFacts(
+        key=key,
+        face_count=companions,
+        det_score=face.score,
+        pad=pad,
+        yaw=face.yaw,
+        pitch=face.pitch,
+        roll=face.roll,
+        eye_openness=face.ear,
+        sharpness=sharpness(image_bgr, face.bbox),
+        brightness=brightness(image_bgr, face.bbox),
+        face_ratio=face_ratio(image_bgr, face.bbox),
+        embedding=embedding,
+        blendshapes=dict(face.blendshapes),
+    )
+    log.debug(
+        "frame measured",
+        extra={
+            "context": {
+                "frame": key,
+                "faces": companions,
+                "yaw": round(facts.yaw, 1),
+                "pitch": round(facts.pitch, 1),
+                "ear": round(facts.eye_openness, 3),
+                "pad": round(facts.pad, 3),
+                "sharpness": round(facts.sharpness, 1),
+            }
+        },
+    )
+    return facts
 
 
 def verify_evidence(
@@ -90,8 +158,13 @@ def verify_evidence(
         try:
             image = decode_frame(raw)
         except FrameError as error:
+            log.warning("frame rejected", extra={"context": {"frame": key, "reason": error.code}})
             return DecisionOutput(reasons=[error.code]), facts, hashes
         facts[key] = measure(backend, key, image)
 
-    output = decide(DecisionInput(issued_challenges, manifest, facts), thresholds)
+    with timed("decide", frames=len(facts)) as span:
+        output = decide(DecisionInput(issued_challenges, manifest, facts), thresholds)
+        span["decision"] = "pass" if output.passed else "fail"
+        span["reasons"] = ",".join(output.reasons) or "-"
+
     return output, facts, hashes

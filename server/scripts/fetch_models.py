@@ -1,4 +1,4 @@
-"""Download the ONNX models. Not committed — ~198 MB.
+"""Download the model files. Not committed — ~202 MB.
 
     py -3.12 server/scripts/fetch_models.py
 
@@ -24,6 +24,14 @@ MINIFASNET_URL = (
     "https://huggingface.co/garciafido/minifasnet-v2-anti-spoofing-onnx/resolve/main/minifasnet_v2.onnx"
 )
 MINIFASNET_SHA256 = "d7b3cd9ba8a7ceb13baa8c4720902e27ca3112eff52f926c08804af6b6eecc7b"
+
+#: MediaPipe Face Landmarker — the default backend's detector, pose source and
+#: eye-contour source, all in one 3.6 MB bundle.
+LANDMARKER_URL = (
+    "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker"
+    "/float16/latest/face_landmarker.task"
+)
+LANDMARKER_SHA256 = "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff"
 
 
 def download(url: str) -> bytes:
@@ -69,8 +77,27 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def fetch_landmarker() -> None:
+    target = MODELS_DIR / "face_landmarker.task"
+    if target.is_file() and sha256(target) == LANDMARKER_SHA256:
+        print("face_landmarker: already present and verified")
+        return
+    payload = download(LANDMARKER_URL)
+    digest = hashlib.sha256(payload).hexdigest()
+    if digest != LANDMARKER_SHA256:
+        raise SystemExit(
+            f"face_landmarker checksum mismatch: expected {LANDMARKER_SHA256}, got {digest}"
+        )
+    target.write_bytes(payload)
+    print("  wrote face_landmarker.task (sha256 verified)")
+
+
 def main() -> int:
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    # Needed by the default (deepface) backend.
+    fetch_landmarker()
+    # Needed only by the `onnx` backend; DeepFace downloads its own weights on
+    # first use, into ~/.deepface/weights.
     fetch_buffalo()
     fetch_minifasnet()
 

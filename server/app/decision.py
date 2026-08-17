@@ -141,8 +141,13 @@ def _check_pose_and_eyes(
     scores: dict[str, object] = {}
     neutral = data.facts[NEUTRAL_KEY]
 
-    frontal_ok = abs(neutral.yaw_proxy) <= th.neutral_yaw_max
-    scores[NEUTRAL_KEY] = {"yawProxy": round(neutral.yaw_proxy, 4), "ok": frontal_ok}
+    frontal_ok = abs(neutral.yaw) <= th.neutral_yaw_max_deg
+    scores[NEUTRAL_KEY] = {
+        "yawDeg": round(neutral.yaw, 2),
+        "pitchDeg": round(neutral.pitch, 2),
+        "ear": round(neutral.eye_openness, 4),
+        "ok": frontal_ok,
+    }
     if not frontal_ok:
         reasons.append("POSE_NOT_FRONTAL")
 
@@ -150,28 +155,37 @@ def _check_pose_and_eyes(
     for name in data.issued_challenges:
         facts = data.facts[name]
         if name in TURN_CHALLENGES:
-            # Measured as a *change* from this person's own neutral frame. The
-            # raw proxy carries a per-person bias of roughly +/-0.15 (measured
-            # on LFW) from facial asymmetry and landmark placement; an absolute
-            # threshold would reject many people's frontal faces and accept
-            # others' as turns. The difference cancels that bias exactly.
-            delta = facts.yaw_proxy - neutral.yaw_proxy
-            turned_enough = abs(delta) >= th.turn_yaw_min
+            # Measured as a *change* from this person's own neutral frame.
+            # Even with MediaPipe's transformation-matrix pose there is a
+            # per-person resting offset — nobody holds their head at exactly
+            # zero — and with the five-point fallback the offset is large
+            # (equivalent to +/-13 deg on LFW, from facial asymmetry alone).
+            # The difference cancels it either way.
+            delta = facts.yaw - neutral.yaw
+            turned_enough = abs(delta) >= th.turn_yaw_min_deg
             turn_deltas[name] = delta
             scores[name] = {
-                "yawProxy": round(facts.yaw_proxy, 4),
-                "yawDelta": round(delta, 4),
+                "yawDeg": round(facts.yaw, 2),
+                "yawDelta": round(delta, 2),
                 "ok": turned_enough,
             }
             if not turned_enough:
                 reasons.append("POSE_INSUFFICIENT_TURN")
         elif name == "closeEyes":
             ratio = _openness_ratio(facts.eye_openness, neutral.eye_openness)
-            closed = ratio <= th.eye_closed_ratio
+            # Two independent reads. The ratio is robust to eye shape; the
+            # absolute EAR floor catches the case where the neutral frame was
+            # itself taken mid-blink, which would make any ratio look fine.
+            closed = ratio <= th.eye_closed_ratio and facts.eye_openness <= th.ear_closed_max
+            blink = max(
+                facts.blendshapes.get("eyeBlinkLeft", 0.0),
+                facts.blendshapes.get("eyeBlinkRight", 0.0),
+            )
             scores[name] = {
-                "openness": round(facts.eye_openness, 4),
-                "neutralOpenness": round(neutral.eye_openness, 4),
+                "ear": round(facts.eye_openness, 4),
+                "neutralEar": round(neutral.eye_openness, 4),
                 "ratio": round(ratio, 4),
+                "blinkBlendshape": round(blink, 4),
                 "ok": closed,
                 "rule": th.eye_rule,
             }

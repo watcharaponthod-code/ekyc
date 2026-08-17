@@ -5,8 +5,19 @@ pydantic>=2.7
 pydantic-settings>=2.3
 SQLAlchemy>=2.0
 numpy>=1.26
-opencv-python-headless>=4.9
+opencv-python>=4.9
+
+# default backend
+mediapipe>=0.10.14
+deepface>=0.0.93
+# DeepFace needs Keras 2 semantics; TensorFlow 2.16+ ships Keras 3.
+tf-keras>=2.16
+# DeepFace's MiniFASNet ensemble is PyTorch.
+torch>=2.2
+
+# `EKYC_BACKEND=onnx` only — no TensorFlow, no PyTorch
 onnxruntime>=1.18
+
 # dev
 pytest>=8.0
 httpx>=0.27

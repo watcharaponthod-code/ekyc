@@ -22,7 +22,7 @@ import onnxruntime as ort
 
 from .align import ARCFACE_DST, ARCFACE_SIZE, norm_crop
 from .backend import DetectedFace
-from .geometry import minifasnet_crop
+from .geometry import minifasnet_crop, yaw_degrees
 
 # --- SCRFD ------------------------------------------------------------------
 _SCRFD_INPUT = 640
@@ -179,6 +179,17 @@ class OnnxFaceBackend:
         tensor = (patch.astype(np.float32) / _PAD_INPUT_DIVISOR).transpose(2, 0, 1)[None, ...]
         logits = self._pad.run(None, {self._pad.get_inputs()[0].name: tensor})[0][0]
         return float(_softmax(logits)[_PAD_LIVE_CLASS])
+
+    # -- pose ---------------------------------------------------------------
+
+    def pose(self, image_bgr: np.ndarray, kps: np.ndarray) -> tuple[float, float, float]:
+        """Yaw in degrees from the five landmarks; pitch and roll are not
+        estimated here, and no rule depends on them for this backend."""
+        eyes = kps[:2]
+        order = np.argsort(eyes[:, 0])
+        axis = eyes[order[1]] - eyes[order[0]]
+        roll = float(np.degrees(np.arctan2(float(axis[1]), float(axis[0]))))
+        return yaw_degrees(kps), 0.0, roll
 
     # -- eyes ---------------------------------------------------------------
 

@@ -8,6 +8,8 @@ direction.
 
 from __future__ import annotations
 
+import math
+
 import cv2
 import numpy as np
 
@@ -35,6 +37,18 @@ def yaw_proxy(kps: np.ndarray) -> float:
         return 0.0
     t = float((nose - eye_a) @ axis) / denom
     return float(np.clip(2.0 * t - 1.0, -1.5, 1.5))
+
+
+def yaw_degrees(kps: np.ndarray) -> float:
+    """`yaw_proxy` converted to degrees.
+
+    Under a simple head model — a ~20 mm nose projection over a ~63 mm
+    interocular distance — the proxy relates to the rotation angle by
+    `proxy ~= 0.635 * tan(theta)`. Reporting degrees lets both backends share
+    one set of thresholds, even though MediaPipe measures pose properly from a
+    transformation matrix and this one infers it from five points.
+    """
+    return math.degrees(math.atan(yaw_proxy(kps) / 0.635))
 
 
 def crop_bbox(image: np.ndarray, bbox: np.ndarray, margin: float = 0.0) -> np.ndarray:

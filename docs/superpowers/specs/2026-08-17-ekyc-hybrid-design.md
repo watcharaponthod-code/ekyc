@@ -158,21 +158,57 @@ Frames travel under a single repeated field rather than one field per challenge:
 
 ## 4. Server design
 
-### 4.1 Models (all ONNX, CPU, `onnxruntime`)
-| Model | File | Source / licence | I/O |
+### 4.1 Vision stack
+
+`EKYC_BACKEND` selects it. **`deepface` is the default**; `onnx` is a
+TensorFlow-free alternative; `fake` runs the API with no models at all.
+
+#### Default — MediaPipe + DeepFace
+
+| Job | Library | Model | Licence |
 |---|---|---|---|
-| Detection + 5-point | `det_10g.onnx` (SCRFD-10GF) | InsightFace `buffalo_l`, MIT-style research licence | (1,3,H,W) → 9 heads, strides 8/16/32 |
-| Recognition | `w600k_r50.onnx` (ArcFace R50, WebFace600K) | InsightFace `buffalo_l` | (N,3,112,112) → 512-d |
-| PAD | `minifasnet_v2.onnx` | `garciafido/minifasnet-v2-anti-spoofing-onnx`, **Apache-2.0**, SHA-256 `d7b3cd9b…eecc7b` | (N,3,80,80) BGR [0,1] → 3-class softmax `[live, print, replay]` |
+| detection, 478 landmarks, head pose, eye openness, blendshapes | **MediaPipe Face Landmarker** | `face_landmarker.task` (3.6 MB) | Apache-2.0 |
+| face embedding | **DeepFace** | ArcFace, 512-d | MIT (weights fetched on first use) |
+| presentation-attack detection | **DeepFace** | MiniFASNet ensemble, 2.7x + 4.0x crops | Apache-2.0 |
 
-Fetched by `server/scripts/fetch_models.py` (never committed; ~198 MB total). `GET /v1/health` reports which loaded.
+One MediaPipe pass per frame yields geometry, pose and eye openness together;
+running the landmarker once instead of three times is the difference between a
+snappy check and a slow one.
 
-> **Licence note:** InsightFace `buffalo_l` weights are published for research use. Before commercial deployment either obtain a licence from InsightFace or swap `w600k_r50` for a commercially-licensed embedder — the swap is one class (`ArcFaceEmbedder`). This is a real, unresolved blocker for production and is recorded as such.
+#### Alternative — `EKYC_BACKEND=onnx`
 
-### 4.2 Preprocessing (exact — these constants matter)
-- **SCRFD**: letterbox into 640×640 preserving aspect (`det_scale`), `blobFromImage(1/128.0, mean 127.5, swapRB=True)`, decode 3 strides × 2 anchors with `distance2bbox` / `distance2kps`, NMS IoU 0.4, score ≥ 0.5.
-- **ArcFace**: 5-point similarity warp (Umeyama) to the canonical `arcface_dst` template at 112×112, then `blobFromImage(1/127.5, mean 127.5, swapRB=True)`. Output L2-normalised; similarity = dot product.
-- **MiniFASNet**: `CropImage.crop` semantics — 2.7× margin **clamped to fit the image**, aspect preserved — resize 80×80, **BGR**, **raw 0…255** (no division), NCHW, `liveScore = softmax[1]`. The published model card gets the input range, the class index and the crop all wrong; following it yields a detector with AUC 0.68 that emits a near-constant vector. Corrected values give AUC 0.996. See `docs/ml-validation.md` §2.
+| Job | File | Note |
+|---|---|---|
+| detection + 5 points | `det_10g.onnx` (SCRFD-10GF) | InsightFace `buffalo_l` |
+| embedding | `w600k_r50.onnx` (ArcFace R50) | InsightFace `buffalo_l` |
+| PAD | `minifasnet_v2.onnx` | Apache-2.0, SHA-256 `d7b3cd9b…eecc7b` |
+
+Loads in `onnxruntime` alone — no TensorFlow, no PyTorch. It measures worse on
+every axis tested (see `docs/ml-validation.md` §0) and needs
+`EKYC_NEUTRAL_YAW_MAX_DEG` raised to ~45, because five-point pose carries a
+±13° per-person bias.
+
+> **Licence note:** the InsightFace `buffalo_l` weights are published for
+> research use, so `EKYC_BACKEND=onnx` is not commercially deployable without
+> resolving that. The default stack has no such restriction.
+
+Fetched by `server/scripts/fetch_models.py`; `GET /v1/health` reports what loaded.
+
+### 4.2 Preprocessing that matters
+
+- **MiniFASNet must see the whole frame.** It reads the border *around* a face —
+  the edge of a phone, the rim of a print. Handing it a pre-made crop makes it
+  crop the crop, the context vanishes, and screen replays start passing: AUC
+  0.976 with a pre-crop against **1.000** with the full frame. `pad_score` calls
+  `Fasnet.analyze(frame, facial_area)` directly for this reason, and a test pins
+  it.
+- **ArcFace alignment** uses a five-point similarity warp (Umeyama) onto the
+  canonical template at 112×112. Anatomy then lands on fixed pixels in every
+  crop, which is what makes cross-frame comparison meaningful.
+- **`onnx` backend only:** SCRFD letterboxes to 640×640 with
+  `blobFromImage(1/128, mean 127.5, swapRB)`; its MiniFASNet export needs **raw
+  0…255** input and reads live from **class 1** — the published card is wrong on
+  both, and following it yields a detector that emits a near-constant vector.
 
 ### 4.3 Verification pipeline (cheapest checks first; short-circuits)
 1. **Session**: exists → not expired → not consumed → nonce equal → `manifest.steps[1:]` names == issued `challenges` in order. Mark consumed **before** any ML work (prevents parallel replay).
@@ -180,36 +216,45 @@ Fetched by `server/scripts/fetch_models.py` (never committed; ~198 MB total). `G
 3. **Decode** every frame; reject > 8 MB or < 480 px on the short side.
 4. **Detect** per frame: exactly one *significant* face, score ≥ 0.5, else `NO_FACE` / `MULTIPLE_FACES`. A second face only counts when it is ≥ 50 % of the subject's width — otherwise a passer-by thirty metres behind you fails the session.
 5. **Quality** on `neutral`: Laplacian variance ≥ 60 (sharpness), mean luma ∈ [0.25, 0.85], face box width ≥ 0.22 × frame width.
-6. **PAD** on every frame → `min(liveScore) ≥ 0.70` else `PAD_LOW`.
+6. **PAD** on every frame → `min(liveScore) ≥ 0.45` else `PAD_LOW`.
 7. **Pose / eye re-verification** (§4.4).
 8. **Identity consistency**: embed all frames, min pairwise cosine ≥ 0.30 else `IDENTITY_INCONSISTENT`. (The turned frames legitimately score lower than two frontal ones — hence the loose bound. It is a *swap* detector, not a match.)
 9. **Decision** → enroll / verify / identify.
 10. **Audit** row; frames discarded (default `RETAIN_FRAMES=none`).
 
-### 4.4 Convention-free pose verification
-Absolute left/right is a swamp: front cameras mirror, EXIF rotates, MLKit and SCRFD disagree on sign. So the server never asserts absolute direction. It computes a **yaw proxy** from the 5 landmarks:
+### 4.4 Convention-free pose, and a real eye measure
+
+Absolute left/right is a swamp: front cameras mirror, EXIF rotates, and
+detectors disagree on sign. The server therefore **never asserts a direction**.
+
+Pose comes from MediaPipe's 4×4 facial transformation matrix, decomposed to
+degrees (ZYX, with the gimbal-lock case handled). Rules:
+
+- `neutral`: `|yaw| ≤ 25°` — a loose sanity bound that rejects a profile shot.
+- each turn: `|yaw(turn) − yaw(neutral)| ≥ 22°`, measured **as a change from the
+  subject's own neutral frame**. Nobody rests at exactly zero, and under the
+  `onnx` fallback the resting offset (±13°) exceeds the turn threshold itself.
+- both turns present: the two deltas must have **opposite signs**, else
+  `POSE_SAME_DIRECTION`.
+
+That proves the head physically rotated both ways without naming either, so
+mirroring cannot change the verdict and relabelling the frames gains an attacker
+nothing.
+
+**Eye openness** is a textbook eye-aspect-ratio from MediaPipe's eye contours:
 
 ```
-eyeL, eyeR = the two eye keypoints ordered by image-x   (index-free)
-nose       = kps[2]
-t          = ((nose - eyeL) · (eyeR - eyeL)) / |eyeR - eyeL|²      # 0 at eyeL, 1 at eyeR
-yawProxy   = 2·t - 1                                               # 0 = frontal, ±1 = extreme
+EAR = (|p2−p6| + |p3−p5|) / (2 · |p1−p4|)
 ```
-Rules, all **relative to the person's own neutral frame** — the raw proxy carries a ±0.15 per-person bias from facial asymmetry that says nothing about pose:
-- `neutral`: `|yawProxy| ≤ 0.45` — a loose sanity bound rejecting a true profile shot
-- each turn frame: `|yawProxy(turn) − yawProxy(neutral)| ≥ 0.30` (≈ 25°)
-- when both turns are present: the two deltas must have **opposite signs**, else `POSE_SAME_DIRECTION`
 
-This proves the head physically rotated **both ways** without ever naming a direction. Attackers gain nothing by relabelling which frame is which.
+Scale-free by construction — no normalisation for face size, distance or
+lighting. Open eyes measure ~0.27 median; shut lids fall below 0.08. The rule
+requires **both** a drop against the subject's own neutral frame (`ratio ≤ 0.65`)
+**and** an absolute floor (`EAR ≤ 0.12`); the floor catches a neutral frame that
+was itself captured mid-blink, which would make any ratio look fine.
 
-**Eye openness** (for `closeEyes`) is measured in the **ArcFace-aligned 112×112 frame**, where the eyes sit at fixed canonical coordinates — so no landmark-index guessing is needed and the windows are perfectly registered across frames of the same session. The 106-point landmark model was dropped: it added a model file and an index-guessing problem for no measured gain.
-
-```
-openness = mean over both eyes of  1 − p5(eye window) / median(face luma)
-```
-An open eye shows a dark iris and pupil; a closed lid is skin. Dividing by the face's own median luma cancels lighting, exposure and skin tone.
-
-Rule: `openness(closeEyes) ≤ 0.65 × openness(neutral)`, and it is **advisory by default** (`EKYC_EYE_RULE=advisory`) — measured, scored and logged, but never the sole cause of a failure. The separation was only demonstrated against *simulated* lid occlusion; every real matched open/closed dataset found turned out to be eye-region crops rather than full faces. Enforcing an uncalibrated rule would trade a security gain that cannot be demonstrated for a usability loss that can. `EKYC_EYE_RULE=enforce` flips it once Phase 6 has real captures.
+`EKYC_EYE_RULE` defaults to **`enforce`**. It was advisory while the metric was
+an uncalibrated image statistic; a real EAR is what changed that.
 
 ### 4.5 Data model (SQLAlchemy; SQLite dev → Postgres prod)
 ```
@@ -222,20 +267,37 @@ audit_events(id PK, session_id, at, decision, reasons_json, scores_json, frame_s
 Identify is a linear scan over `templates` — fine to ~50 k templates on CPU (512-d dot products). Beyond that, swap `TemplateStore` for pgvector; the interface does not change.
 
 ### 4.6 Thresholds
+
+Every value below was set from measurement. Full workings, sample sizes and the
+three defaults that would have rejected genuine users are in
+`docs/ml-validation.md`.
+
 | Name | Default | Basis |
 |---|---|---|
-| `PAD_MIN` | 0.70 | MiniFASNet-V2 reference operating point |
-| `MATCH_MIN` (ArcFace cosine) | 0.42 | **measured** — impostor ceiling 0.262, genuine median 0.702 |
-| `CONSISTENCY_MIN` | 0.30 | **measured** — worst genuine 0.455 under extreme pose, impostor max 0.145 |
-| `NEUTRAL_YAW_MAX` | 0.45 | **measured** — the raw yaw proxy carries a ±0.15 per-person bias |
-| `TURN_YAW_MIN` | 0.30 | as a *delta from neutral*; ≈ 25° |
-| `EYE_CLOSED_RATIO` | 0.65 | advisory by default; not yet calibrated on real closures |
-| `SHARPNESS_MIN` | 60 | **measured** — real phone selfies bottom out at 98 |
-| `FACE_RATIO_MIN` | 0.22 | **measured** — real phone selfies bottom out at 0.252 |
+| `PAD_MIN` | 0.45 | live min 0.501 vs spoof max 0.393 — AUC 1.000 |
+| `MATCH_MIN` | 0.42 | 60 genuine / 1710 impostor pairs, AUC 0.994: FAR 0.06 %, FRR 13 % |
+| `CONSISTENCY_MIN` | 0.25 | worst genuine within-person pair 0.155, impostor median 0.065 |
+| `NEUTRAL_YAW_MAX_DEG` | 25 | frontal LFW median 7.7°, p90 19.1° |
+| `TURN_YAW_MIN_DEG` | 22 | as a delta from neutral |
+| `EYE_CLOSED_RATIO` / `EAR_CLOSED_MAX` | 0.65 / 0.12 | open-eye EAR median 0.265, p10 0.131 |
+| `SHARPNESS_MIN` | 60 | real phone selfies bottom out at 98 |
+| `FACE_RATIO_MIN` | 0.22 | real phone selfies bottom out at 0.252 |
 
-Every value marked *measured* was set from data, and three of them were wrong in the first draft in ways that would have rejected genuine users — see `docs/ml-validation.md`. What remains uncalibrated is the **target population** (all measurements are on Western press photography and one vendor's selfie set) and the **eye rule**. Phase 6 closes both.
+What is still **not** calibrated: the **target population** — every measurement
+above is on Western press photography plus one vendor's selfie set — and
+**non-replay attacks**: print, cut-out and mask are untested.
 
----
+### 4.7 Logging
+
+One line per decision carrying the whole picture, plus per-stage timings:
+`session.created`, `submit.rejected`, `submit.decided`, `measure.analyze`,
+`measure.pad`, `measure.embed`, `decide`. `EKYC_LOG_FORMAT=json` for ingestion,
+`text` for a readable console.
+
+Logs complement the `audit_events` table rather than duplicating it, and a
+redaction filter drops any field whose name mentions an embedding, an image, a
+frame, a nonce or a token — so no biometric or replayable material can reach a
+log sink.
 
 ## 5. Mobile module design
 

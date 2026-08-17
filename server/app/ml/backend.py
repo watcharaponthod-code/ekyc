@@ -1,14 +1,24 @@
 """The ML seam.
 
 Everything the decision engine needs from computer vision is behind this one
-protocol. The real implementation loads four ONNX models; the fake one lets the
-whole API and its test suite run with no model files at all.
+protocol. Two implementations exist:
+
+* `DeepFaceMediaPipeBackend` — MediaPipe Face Landmarker for geometry, pose and
+  eye openness; DeepFace for embedding and anti-spoofing. The default.
+* `OnnxFaceBackend` — SCRFD + ArcFace + MiniFASNet loaded directly with
+  onnxruntime. No TensorFlow, much lighter, kept for constrained deployments.
+
+`FakeFaceBackend` lets the whole API and its test suite run with no model files
+at all.
+
+Pose is reported in **degrees** by every backend, so thresholds mean the same
+thing regardless of which one is running.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 import numpy as np
 
@@ -33,19 +43,26 @@ class FrameFacts:
     key: str
     face_count: int
     det_score: float = 0.0
-    #: 0..1 — MiniFASNet live probability.
+    #: 0..1 — probability the face is live.
     pad: float = 0.0
-    #: -1..1 — 0 is frontal. See `geometry.yaw_proxy`.
-    yaw_proxy: float = 0.0
-    #: Height/width ratio of the eye contour; falls sharply when eyes close.
+    #: Head rotation in degrees. No absolute direction is asserted anywhere:
+    #: the rules only ever compare against the subject's own neutral frame.
+    yaw: float = 0.0
+    pitch: float = 0.0
+    roll: float = 0.0
+    #: Eye-aspect-ratio where the backend can measure it (~0.30 open, ~0.10
+    #: closed); otherwise a backend-specific openness proxy.
     eye_openness: float = 0.0
     sharpness: float = 0.0
     brightness: float = 0.0
     #: Face box width divided by frame width.
     face_ratio: float = 0.0
     embedding: np.ndarray = field(default_factory=lambda: np.zeros(512, dtype=np.float32))
+    #: Optional second opinion from MediaPipe blendshapes.
+    blendshapes: dict[str, float] = field(default_factory=dict)
 
 
+@runtime_checkable
 class FaceBackend(Protocol):
     """Vision operations the verification pipeline depends on."""
 
@@ -61,13 +78,16 @@ class FaceBackend(Protocol):
 
     def eye_openness(self, image_bgr: np.ndarray, bbox: np.ndarray, kps: np.ndarray) -> float: ...
 
+    def pose(self, image_bgr: np.ndarray, kps: np.ndarray) -> tuple[float, float, float]:
+        """Yaw, pitch, roll in degrees."""
+        ...
+
 
 class FakeFaceBackend:
     """Scripted backend for tests.
 
-    Give it a dict keyed by anything you like and drive `next_facts` from the
-    test, or let it return a plausible default. It never touches ONNX, so the
-    session, protocol and decision tests run in milliseconds.
+    Never touches MediaPipe, DeepFace or ONNX, so the session, protocol and
+    decision tests run in milliseconds.
     """
 
     name = "fake"
@@ -76,18 +96,20 @@ class FakeFaceBackend:
         self,
         face_count: int = 1,
         pad: float = 0.95,
-        yaw_proxy: float = 0.0,
-        eye_openness: float = 0.35,
+        yaw: float = 0.0,
+        eye_openness: float = 0.30,
         embedding: np.ndarray | None = None,
     ) -> None:
         self.face_count = face_count
         self.pad = pad
-        self.yaw_proxy = yaw_proxy
+        self.yaw = yaw
         self._eye_openness = eye_openness
-        self._embedding = embedding if embedding is not None else _unit(np.ones(512, dtype=np.float32))
+        self._embedding = (
+            embedding if embedding is not None else _unit(np.ones(512, dtype=np.float32))
+        )
 
     def loaded_models(self) -> dict[str, bool]:
-        return {"detector": True, "embedder": True, "landmarks": True, "pad": True}
+        return {"detector": True, "embedder": True, "pad": True}
 
     def detect(self, image_bgr: np.ndarray) -> list[DetectedFace]:
         h, w = image_bgr.shape[:2]
@@ -112,6 +134,9 @@ class FakeFaceBackend:
 
     def eye_openness(self, image_bgr: np.ndarray, bbox: np.ndarray, kps: np.ndarray) -> float:
         return self._eye_openness
+
+    def pose(self, image_bgr: np.ndarray, kps: np.ndarray) -> tuple[float, float, float]:
+        return self.yaw, 0.0, 0.0
 
 
 def _unit(vector: np.ndarray) -> np.ndarray:

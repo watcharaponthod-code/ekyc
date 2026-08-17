@@ -36,7 +36,7 @@ import {
  * `localhost` is the phone itself, so on a physical device use your machine's
  * LAN address. It is editable on the home screen so you do not have to rebuild.
  */
-const DEFAULT_BASE_URL = 'http://192.168.1.10:8000'
+const DEFAULT_BASE_URL = 'http://192.168.1.177:8000'
 
 type Screen =
   | { kind: 'home' }

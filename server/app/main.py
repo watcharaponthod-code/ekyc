@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session
 
 from .config import settings, thresholds
 from .db import get_db, init_db
+from .logging_config import configure as configure_logging
+from .logging_config import log_event, timed
 from .decision import NEUTRAL_KEY, required_frame_keys
 from .ml.backend import FaceBackend, FakeFaceBackend
 from .models import AuditEvent
@@ -36,7 +38,9 @@ from .services.verification import verify_evidence
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    configure_logging(settings.log_level, settings.log_format)
     init_db()
+    log_event("server.start", version=settings.version, backend=settings.backend)
     yield
 
 
@@ -45,16 +49,18 @@ app = FastAPI(title="eKYC verification server", version=settings.version, lifesp
 
 @lru_cache(maxsize=1)
 def get_backend() -> FaceBackend:
-    """Load the vision models once.
+    """Load the vision stack once, per `EKYC_BACKEND`."""
+    with timed("backend.load", backend=settings.backend):
+        if settings.backend == "fake":
+            return FakeFaceBackend()
+        if settings.backend == "onnx":
+            from .ml.onnx_backend import OnnxFaceBackend
 
-    Falls back to the fake backend when ONNX is disabled, so the API can be run
-    and exercised end-to-end without downloading 200 MB of weights.
-    """
-    if not settings.use_onnx:
-        return FakeFaceBackend()
-    from .ml.onnx_backend import OnnxFaceBackend
+            return OnnxFaceBackend(settings.models_dir)
 
-    return OnnxFaceBackend(settings.models_dir)
+        from .ml.deepface_backend import DeepFaceMediaPipeBackend
+
+        return DeepFaceMediaPipeBackend(settings.models_dir)
 
 
 @app.get("/v1/health", response_model=HealthOut)
@@ -73,9 +79,20 @@ def create_session(
     request: CreateSessionRequest, db: Annotated[Session, Depends(get_db)]
 ) -> CreatedSession:
     try:
-        return sessions_service.create_session(db, request)
+        created = sessions_service.create_session(db, request)
     except SessionError as error:
+        log_event("session.rejected", reason=error.code, purpose=request.purpose)
         raise HTTPException(status_code=400, detail=error.code) from error
+
+    log_event(
+        "session.created",
+        session=created.sessionId,
+        purpose=request.purpose,
+        tier=request.tier,
+        challenges=",".join(created.challenges),
+        person=request.personId,
+    )
+    return created
 
 
 @app.post("/v1/sessions/{session_id}/submit", response_model=DecisionResponse)
@@ -93,6 +110,7 @@ async def submit_evidence(
     try:
         record = sessions_service.consume_session(db, session_id, parsed.nonce)
     except SessionError as error:
+        log_event("submit.rejected", session=session_id, reason=error.code)
         status = 404 if error.code == "SESSION_NOT_FOUND" else 409
         raise HTTPException(status_code=status, detail=error.code) from error
 
@@ -119,6 +137,18 @@ async def submit_evidence(
         except persons_service.PersonError as error:
             response.decision = "fail"
             response.reasons = [error.code]
+
+    log_event(
+        "submit.decided",
+        session=record.id,
+        purpose=record.purpose,
+        decision=response.decision,
+        reasons=",".join(response.reasons) or "-",
+        person=response.personId,
+        match=round(response.match.score, 4) if response.match else None,
+        pad=response.scores.get("pad"),
+        consistency=response.scores.get("identityConsistency"),
+    )
 
     record.state = response.decision
     db.add(

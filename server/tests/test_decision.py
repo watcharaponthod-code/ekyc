@@ -24,8 +24,8 @@ def facts(key: str, **overrides) -> FrameFacts:
         face_count=1,
         det_score=0.9,
         pad=0.95,
-        yaw_proxy=0.0,
-        eye_openness=0.6,
+        yaw=0.0,
+        eye_openness=0.30,
         sharpness=120.0,
         brightness=0.5,
         face_ratio=0.4,
@@ -51,11 +51,11 @@ def good_case(names=("closeEyes", "turnLeft", "turnRight")):
     frames = {"neutral": facts("neutral")}
     for name in names:
         if name == "turnLeft":
-            frames[name] = facts(name, yaw_proxy=-0.4)
+            frames[name] = facts(name, yaw=-30.0)
         elif name == "turnRight":
-            frames[name] = facts(name, yaw_proxy=0.4)
+            frames[name] = facts(name, yaw=30.0)
         elif name == "closeEyes":
-            frames[name] = facts(name, eye_openness=0.2)
+            frames[name] = facts(name, eye_openness=0.08)
         else:
             frames[name] = facts(name)
     return DecisionInput(names, manifest(names), frames)
@@ -120,7 +120,7 @@ class TestStructure:
 
     def test_it_rejects_a_second_person_in_frame(self):
         data = good_case(["turnLeft"])
-        data.facts["turnLeft"] = facts("turnLeft", face_count=2, yaw_proxy=-0.4)
+        data.facts["turnLeft"] = facts("turnLeft", face_count=2, yaw=-30.0)
         assert decide(data, TH).reasons == ["MULTIPLE_FACES"]
 
     def test_structural_failure_short_circuits_the_rest(self):
@@ -148,7 +148,7 @@ class TestQuality:
 
     def test_quality_only_judges_the_neutral_frame(self):
         data = good_case(["turnLeft"])
-        data.facts["turnLeft"] = facts("turnLeft", yaw_proxy=-0.4, sharpness=1.0)
+        data.facts["turnLeft"] = facts("turnLeft", yaw=-30.0, sharpness=1.0)
         assert "QUALITY_SHARPNESS" not in decide(data, TH).reasons
 
     def test_it_reports_every_quality_problem_at_once(self):
@@ -161,52 +161,52 @@ class TestQuality:
 class TestPad:
     def test_it_rejects_when_any_frame_looks_like_a_screen(self):
         data = good_case(["turnLeft", "turnRight"])
-        data.facts["turnRight"] = facts("turnRight", yaw_proxy=0.4, pad=0.1)
+        data.facts["turnRight"] = facts("turnRight", yaw=30.0, pad=0.1)
         assert "PAD_LOW" in decide(data, TH).reasons
 
     def test_it_scores_the_worst_frame_not_the_average(self):
         data = good_case(["turnLeft", "turnRight"])
-        data.facts["turnRight"] = facts("turnRight", yaw_proxy=0.4, pad=0.3)
+        data.facts["turnRight"] = facts("turnRight", yaw=30.0, pad=0.3)
         assert decide(data, TH).scores["pad"] == pytest.approx(0.3)
 
 
 class TestPose:
     def test_it_rejects_a_neutral_frame_in_profile(self):
         data = good_case(["turnLeft"])
-        data.facts["neutral"] = facts("neutral", yaw_proxy=0.9)
+        data.facts["neutral"] = facts("neutral", yaw=68.0)
         assert "POSE_NOT_FRONTAL" in decide(data, TH).reasons
 
     def test_it_tolerates_the_per_person_bias_in_a_frontal_frame(self):
         """LFW puts |yawProxy| at 0.18 median for frontal faces; that must pass."""
         data = good_case(["turnLeft", "turnRight"])
-        data.facts["neutral"] = facts("neutral", yaw_proxy=0.25)
-        data.facts["turnLeft"] = facts("turnLeft", yaw_proxy=-0.20)
-        data.facts["turnRight"] = facts("turnRight", yaw_proxy=0.70)
+        data.facts["neutral"] = facts("neutral", yaw=18.0)
+        data.facts["turnLeft"] = facts("turnLeft", yaw=-15.0)
+        data.facts["turnRight"] = facts("turnRight", yaw=52.0)
         assert decide(data, TH).passed, decide(data, TH).reasons
 
     def test_turn_size_is_measured_from_the_persons_own_neutral(self):
         """A biased neutral frame must not turn a real turn into a failure."""
         data = good_case(["turnLeft"])
-        data.facts["neutral"] = facts("neutral", yaw_proxy=0.30)
-        data.facts["turnLeft"] = facts("turnLeft", yaw_proxy=0.15)  # abs is big, delta is small
+        data.facts["neutral"] = facts("neutral", yaw=22.0)
+        data.facts["turnLeft"] = facts("turnLeft", yaw=11.0)  # abs is big, delta is small
         assert "POSE_INSUFFICIENT_TURN" in decide(data, TH).reasons
-        assert decide(data, TH).scores["steps"]["turnLeft"]["yawDelta"] == pytest.approx(-0.15)
+        assert decide(data, TH).scores["steps"]["turnLeft"]["yawDelta"] == pytest.approx(-11.0)
 
     def test_it_rejects_a_head_that_barely_moved(self):
         data = good_case(["turnLeft"])
-        data.facts["turnLeft"] = facts("turnLeft", yaw_proxy=-0.05)
+        data.facts["turnLeft"] = facts("turnLeft", yaw=-4.0)
         assert "POSE_INSUFFICIENT_TURN" in decide(data, TH).reasons
 
     def test_it_rejects_two_turns_in_the_same_direction(self):
         data = good_case(["turnLeft", "turnRight"])
-        data.facts["turnRight"] = facts("turnRight", yaw_proxy=-0.4)
+        data.facts["turnRight"] = facts("turnRight", yaw=-30.0)
         assert "POSE_SAME_DIRECTION" in decide(data, TH).reasons
 
     def test_it_accepts_either_absolute_direction_for_a_given_label(self):
         """The rule is 'opposite', never 'left is negative' — mirroring must not matter."""
         mirrored = good_case(["turnLeft", "turnRight"])
-        mirrored.facts["turnLeft"] = facts("turnLeft", yaw_proxy=0.4)
-        mirrored.facts["turnRight"] = facts("turnRight", yaw_proxy=-0.4)
+        mirrored.facts["turnLeft"] = facts("turnLeft", yaw=30.0)
+        mirrored.facts["turnRight"] = facts("turnRight", yaw=-30.0)
         assert decide(mirrored, TH).passed
 
     def test_the_same_direction_rule_needs_both_turns_present(self):
@@ -217,43 +217,57 @@ class TestPose:
 class TestEyes:
     def test_it_measures_closure_against_the_persons_own_neutral_frame(self):
         data = good_case(["closeEyes"])
-        data.facts["neutral"] = facts("neutral", eye_openness=1.2)
-        data.facts["closeEyes"] = facts("closeEyes", eye_openness=0.4)
-        assert decide(data, TH).scores["steps"]["closeEyes"]["ratio"] == pytest.approx(1 / 3, abs=1e-4)
+        data.facts["neutral"] = facts("neutral", eye_openness=0.34)
+        data.facts["closeEyes"] = facts("closeEyes", eye_openness=0.11)
+        assert decide(data, TH).scores["steps"]["closeEyes"]["ratio"] == pytest.approx(0.11 / 0.34, abs=1e-3)
 
-    def test_open_eyes_do_not_fail_the_session_while_the_rule_is_advisory(self):
+    def test_open_eyes_fail_the_closed_eyes_step(self):
         data = good_case(["closeEyes"])
-        data.facts["closeEyes"] = facts("closeEyes", eye_openness=0.6)
-        out = decide(data, TH)
+        data.facts["closeEyes"] = facts("closeEyes", eye_openness=0.30)
+        assert "EYES_NOT_CLOSED" in decide(data, TH).reasons
+
+    def test_the_rule_can_be_downgraded_to_advisory(self):
+        """Kept as an escape hatch: measured and scored, but not decisive."""
+        lenient = Thresholds(eye_rule="advisory")
+        data = good_case(["closeEyes"])
+        data.facts["closeEyes"] = facts("closeEyes", eye_openness=0.30)
+        out = decide(data, lenient)
         assert out.passed
         assert out.scores["steps"]["closeEyes"]["ok"] is False
 
-    def test_enforcing_the_rule_rejects_open_eyes(self):
-        strict = Thresholds(eye_rule="enforce")
+    def test_a_low_ratio_is_not_enough_without_a_low_absolute_ear(self):
+        """A neutral frame caught mid-blink would make any ratio look fine."""
         data = good_case(["closeEyes"])
-        data.facts["closeEyes"] = facts("closeEyes", eye_openness=0.6)
-        assert "EYES_NOT_CLOSED" in decide(data, strict).reasons
+        data.facts["neutral"] = facts("neutral", eye_openness=0.60)
+        data.facts["closeEyes"] = facts("closeEyes", eye_openness=0.25)
+        assert "EYES_NOT_CLOSED" in decide(data, TH).reasons
 
     def test_an_unmeasurable_neutral_frame_fails_closed(self):
-        strict = Thresholds(eye_rule="enforce")
         data = good_case(["closeEyes"])
         data.facts["neutral"] = facts("neutral", eye_openness=0.0)
-        assert "EYES_NOT_CLOSED" in decide(data, strict).reasons
+        assert "EYES_NOT_CLOSED" in decide(data, TH).reasons
+
+    def test_blendshape_blink_is_reported_alongside_the_geometry(self):
+        data = good_case(["closeEyes"])
+        data.facts["closeEyes"] = facts(
+            "closeEyes", eye_openness=0.08, blendshapes={"eyeBlinkLeft": 0.94, "eyeBlinkRight": 0.91}
+        )
+        assert decide(data, TH).scores["steps"]["closeEyes"]["blinkBlendshape"] == pytest.approx(0.94)
 
 
 class TestIdentityConsistency:
     def test_it_catches_a_swapped_face(self):
         data = good_case(["turnLeft"])
-        data.facts["turnLeft"] = facts("turnLeft", yaw_proxy=-0.4, embedding=BOB)
+        data.facts["turnLeft"] = facts("turnLeft", yaw=-30.0, embedding=BOB)
         assert "IDENTITY_INCONSISTENT" in decide(data, TH).reasons
 
     def test_it_tolerates_the_pose_change_of_one_person(self):
         blended = (0.75 * ALICE + 0.25 * BOB).astype(np.float32)
         data = good_case(["turnLeft"])
-        data.facts["turnLeft"] = facts("turnLeft", yaw_proxy=-0.4, embedding=blended)
+        data.facts["turnLeft"] = facts("turnLeft", yaw=-30.0, embedding=blended)
         assert decide(data, TH).passed
 
     def test_it_reports_the_worst_pair_not_the_mean(self):
         data = good_case(["turnLeft", "turnRight"])
-        data.facts["turnRight"] = facts("turnRight", yaw_proxy=0.4, embedding=BOB)
+        data.facts["turnRight"] = facts("turnRight", yaw=30.0, embedding=BOB)
         assert decide(data, TH).scores["identityConsistency"] == pytest.approx(0.0, abs=1e-6)
