@@ -31,7 +31,9 @@ That is the whole API surface most apps need.
 **Not on the phone**
 - Whether the person is live. Whether it is the right person. The thresholds. The template.
 
-All of that is server-side, because the phone belongs to whoever is holding it. A rooted device or a patched build can make a client-side `liveness = true` say anything; it cannot fabricate photographs that survive server-side re-verification. See `docs/superpowers/specs/2026-08-17-ekyc-hybrid-design.md`.
+All of that is server-side, because the phone belongs to whoever is holding it. A rooted device or a patched build can make a client-side `liveness = true` say anything; it cannot fabricate photographs that survive server-side re-verification.
+
+The server measures with **MediaPipe** (detection, 478 landmarks, head pose in degrees, eye aspect ratio) and identifies with **DeepFace** (ArcFace embeddings, MiniFASNet anti-spoofing). ML Kit on the phone produces the real-time signal that drives the coaching UI, and nothing else — the server re-derives every number from the pixels. See `docs/superpowers/specs/2026-08-17-ekyc-hybrid-design.md`.
 
 The module stores **no biometric data on the device**.
 

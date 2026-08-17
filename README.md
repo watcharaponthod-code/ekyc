@@ -5,7 +5,7 @@ A React Native module plus a Python server. The phone runs the interaction; the 
 ```
 packages/react-native-ekyc/   the module the team consumes
 apps/example/                 Expo demo (enrol / verify / identify)
-server/                       FastAPI + ONNX decision service
+server/                       FastAPI decision service (MediaPipe + DeepFace)
 docs/                         design spec, ML validation, UI research, device QA
 ```
 
@@ -14,6 +14,20 @@ docs/                         design spec, ML validation, UI research, device QA
 The phone belongs to whoever is holding it. A rooted device or a patched build can make a client-side `liveness = true` say anything, so the phone collects evidence and the server judges it — the same split FaceTec, AWS Rekognition Face Liveness, iProov and Onfido all use.
 
 The phone stores **no biometric data at all**.
+
+## The vision stack
+
+**MediaPipe** measures — detection, 478 landmarks, head pose in degrees, eye
+aspect ratio, blendshapes. **DeepFace** identifies — ArcFace embeddings and the
+MiniFASNet anti-spoofing ensemble. Every decision the system makes comes from
+those two.
+
+On the phone, ML Kit produces a real-time signal that drives the coaching UI
+only; the server never trusts it and re-derives everything from the pixels.
+
+`EKYC_BACKEND=onnx` swaps in an ONNX-only stack (SCRFD + ArcFace + MiniFASNet)
+for deployments that cannot carry TensorFlow and PyTorch. It measures worse —
+see `docs/ml-validation.md` §0.
 
 ## Start here
 
@@ -30,8 +44,8 @@ npm test                      # 77 module tests
 
 cd server
 py -3.12 -m pip install -r requirements.txt
-py -3.12 scripts/fetch_models.py          # ~198 MB, SHA-256 verified
-py -3.12 -m pytest tests -m ""            # 68 tests, 18 of them on real models
+py -3.12 scripts/fetch_models.py          # ~202 MB, SHA-256 verified
+py -3.12 -m pytest tests -m ""            # 90 tests, 42 of them on real models
 py -3.12 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 cd ../apps/example
@@ -40,4 +54,14 @@ npx expo run:ios              # a development build — this cannot run in Expo 
 
 ## Status
 
-Phases 0–5 are built and tested. Nothing has run on a physical phone yet, and the thresholds are calibrated against Western press photography and one vendor's selfie set rather than the target population. Both are gates before production; see `docs/qa-checklist.md`.
+Phases 0–5 are built and tested: **90 server tests and 77 module tests pass**,
+including enrol → verify → identify → erase end-to-end on real faces.
+
+Two gates remain before production, both in `docs/qa-checklist.md`:
+
+1. **Nothing has run on a physical phone.** The capture flow is verified by type
+   checking and unit tests over the pure logic; the camera, shutter latency and
+   the `yawSign` calibration need real hardware.
+2. **Thresholds are calibrated against Western press photography and one
+   vendor's selfie set**, not the target population, and only screen-replay
+   attacks have been tested — not print, cut-out or mask.

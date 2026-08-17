@@ -12,7 +12,7 @@ ML Kit ships no arm64 iOS simulator slice, so all of this needs real hardware: o
 # server
 py -3.12 server/scripts/fetch_models.py
 py -3.12 -m uvicorn app.main:app --host 0.0.0.0 --port 8000   # from server/
-curl http://localhost:8000/v1/health     # expect backend "onnx", all three models true
+curl http://localhost:8000/v1/health     # expect backend "deepface+mediapipe"
 
 # app — a development build, not Expo Go
 npx expo prebuild && npx expo run:ios      # or run:android
@@ -83,7 +83,11 @@ If `w` is wildly off, `frameWidth`/`frameHeight` from the detector are not what 
 - [ ] Airplane mode mid-upload → a retriable network failure, not a crash
 - [ ] Submit the same session twice (background the app mid-upload) → second attempt `SESSION_CONSUMED`
 
-Record for each run: `scores.pad`, `scores.identityConsistency`, `scores.steps.*.yawDelta`, `match.score`. Those four numbers are the input to Phase 6.
+Record for each run: `scores.pad`, `scores.identityConsistency`,
+`scores.steps.*.yawDelta`, `scores.steps.closeEyes.ear` and `match.score`.
+Those are the input to Phase 6 — and the server already logs every one of them
+per submission (`submit.decided`), so `EKYC_LOG_FORMAT=json` plus a file sink is
+enough to collect the whole campaign.
 
 ---
 
@@ -100,7 +104,7 @@ Do these honestly and record the outcome even when the system loses.
 | Real person, but a photo of someone else swapped into one step | `IDENTITY_INCONSISTENT` | |
 | Two people, the enrolled one turning while the other stays frontal | `MULTIPLE_FACES` | |
 
-The eye rule is **advisory** by default and will not fail any of these on its own — see `docs/ml-validation.md` §5.
+The closed-eyes rule is **enforced** now that it measures a real eye-aspect-ratio from MediaPipe's eye contours. A printed photo cannot close its eyes, so expect it to contribute here — record whether it actually does.
 
 ---
 
@@ -119,16 +123,16 @@ The eye rule is **advisory** by default and will not fail any of these on its ow
 Everything shipped today is calibrated against Western press photography and one vendor's selfie set. What must be measured on the actual user population:
 
 1. **Match threshold.** ≥ 20 people × 3 captures each, varying light, glasses on/off. Plot genuine vs impostor cosine, pick the point where FAR ≈ 0.1 %, record the resulting FRR. Update `EKYC_MATCH_MIN`.
-2. **PAD on print attacks.** Only screen replay has been measured (AUC 0.996, n=60). Print and cut-out masks are untested.
-3. **Eye rule.** Capture matched open/closed pairs of the same faces, measure the openness ratio, then set `EKYC_EYE_RULE=enforce` with a calibrated `EKYC_EYE_CLOSED_RATIO`.
-4. **Within-session yaw noise.** Ten sessions of the same person, look at the spread of `yawProxy` on repeated neutral frames. If it is well under 0.30, `EKYC_TURN_YAW_MIN` can come down and the turn gets easier.
+2. **PAD on print attacks.** Only screen replay has been measured (AUC 1.000, n=70). Print, cut-out and mask attacks are untested.
+3. **Eye rule.** Already enforced, with the floor set under the measured open-eye p10 (0.131). Confirm on the target population that genuinely closed eyes clear `EKYC_EAR_CLOSED_MAX=0.12` and open eyes do not.
+4. **Within-session yaw noise.** Ten sessions of the same person; look at the spread of `yawDeg` across repeated neutral frames. If it is well under 22°, `EKYC_TURN_YAW_MIN_DEG` can come down and the turn gets easier.
 
 ---
 
 ## 9. Do not ship without
 
 - [ ] Phase 6 complete
-- [ ] InsightFace `buffalo_l` licensing resolved, or the embedder swapped (one class: `OnnxFaceBackend.embed`)
+- [ ] If running `EKYC_BACKEND=onnx`: InsightFace `buffalo_l` licensing resolved. The default MediaPipe + DeepFace stack has no such restriction.
 - [ ] TLS with certificate pinning
 - [ ] Play Integrity / App Attest bound to `sessionId`
 - [ ] Rate limiting on `/v1/sessions`
