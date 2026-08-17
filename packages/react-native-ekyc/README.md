@@ -46,10 +46,16 @@ npm install @ekyc/react-native-ekyc
 ```
 
 Publishing it for your team: `npm publish` (set `publishConfig.registry` for a
-private registry). `prepare` builds `lib/` first, so consumers get compiled JS
-plus `.d.ts`. React Native apps resolve `react-native: "src/index.ts"` instead
-and let Metro compile the TypeScript directly — better stack traces, and no way
-to ship a stale build.
+private registry). `prepare` builds `lib/` first, so Node consumers get compiled
+JS plus `.d.ts` through the `exports` map. React Native apps take the
+`react-native` condition — `src/index.ts` — and Metro compiles the TypeScript
+directly.
+
+That split is not cosmetic. With `main` pointing at `lib/`, a release bundle
+silently shipped a `lib/` that had been built *before* three bug fixes, while
+debug builds (which resolve `src/`) worked — the two behaved differently and it
+took a device to notice. `main` now points at `src/` too, so there is no build
+output for Metro to pick up stale.
 
 Peer dependencies (all native, so a development build is required — this does not run in Expo Go):
 

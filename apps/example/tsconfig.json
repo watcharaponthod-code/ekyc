@@ -5,9 +5,19 @@
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "paths": {
-      "@ekyc/react-native-ekyc": ["../../packages/react-native-ekyc/src/index.ts"]
+      "@ekyc/react-native-ekyc": [
+        "../../packages/react-native-ekyc/src/index.ts"
+      ],
+      "@ekyc/react-native-ekyc/src/*": [
+        "../../packages/react-native-ekyc/src/*"
+      ]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules"]
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }
