@@ -1,5 +1,9 @@
 // Monorepo Metro config: watch the workspace root so the local package is
-// picked up, and resolve modules from both the app and the root.
+// picked up, and resolve from both the app's and the root's node_modules.
+//
+// Note: `disableHierarchicalLookup` is deliberately NOT set. npm installs some
+// of Expo's own dependencies nested (node_modules/expo/node_modules/…), and
+// turning off hierarchical lookup makes Metro fail to resolve them.
 const { getDefaultConfig } = require('expo/metro-config')
 const path = require('node:path')
 
@@ -13,7 +17,5 @@ config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
 ]
-// One copy of each native module, or Nitro hybrid objects register twice.
-config.resolver.disableHierarchicalLookup = true
 
 module.exports = config

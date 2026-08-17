@@ -17,7 +17,9 @@
     },
     "android": {
       "package": "com.example.ekyc",
-      "permissions": ["android.permission.CAMERA"],
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#070A12",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -26,17 +28,11 @@
       },
       "predictiveBackGestureEnabled": false
     },
-    "plugins": [
-      [
-        "react-native-vision-camera",
-        {
-          "cameraPermissionText": "ใช้กล้องหน้าเพื่อยืนยันตัวตนของคุณ",
-          "enableMicrophonePermission": false
-        }
-      ]
-    ],
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
   }
 }
