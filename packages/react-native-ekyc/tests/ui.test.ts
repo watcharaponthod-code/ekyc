@@ -1,4 +1,5 @@
 import { explainReasons, instructionFor, strings } from '../src/ui/copy'
+import { hasVisualHint, hintSide } from '../src/ui/hints'
 import { defaultTheme, ellipsePerimeter, frameGeometry, holdRingDash } from '../src/ui/theme'
 
 describe('frameGeometry', () => {
@@ -145,5 +146,49 @@ describe('explainReasons', () => {
     expect(explainReasons('en', ['SOMETHING_NEW', 'NO_MATCH'])).toEqual([
       "That doesn't match the enrolled face.",
     ])
+  })
+})
+
+describe('hintSide', () => {
+  it('points at the screen side matching the user in a mirrored preview', () => {
+    expect(hintSide('turnLeft')).toBe('left')
+    expect(hintSide('turnRight')).toBe('right')
+  })
+
+  it('flips with yawSign, so the arrow and the words never disagree', () => {
+    expect(hintSide('turnLeft', -1)).toBe('right')
+    expect(hintSide('turnRight', -1)).toBe('left')
+  })
+
+  it('shows nothing for steps that have no direction', () => {
+    expect(hintSide('center')).toBeNull()
+    expect(hintSide('closeEyes')).toBeNull()
+    expect(hintSide('smile')).toBeNull()
+    expect(hintSide(null)).toBeNull()
+  })
+
+  it('never points both turns at the same side', () => {
+    for (const sign of [1, -1] as const) {
+      expect(hintSide('turnLeft', sign)).not.toBe(hintSide('turnRight', sign))
+    }
+  })
+})
+
+describe('hasVisualHint', () => {
+  it('covers every step a user could turn the wrong way on', () => {
+    expect(hasVisualHint('turnLeft')).toBe(true)
+    expect(hasVisualHint('turnRight')).toBe(true)
+    expect(hasVisualHint('closeEyes')).toBe(true)
+  })
+
+  it('leaves the framing step alone — the oval is already the instruction', () => {
+    expect(hasVisualHint('center')).toBe(false)
+    expect(hasVisualHint(null)).toBe(false)
+  })
+
+  it('agrees with hintSide about which steps have a direction', () => {
+    for (const step of ['center', 'closeEyes', 'turnLeft', 'turnRight', 'smile'] as const) {
+      if (hintSide(step) !== null) expect(hasVisualHint(step)).toBe(true)
+    }
   })
 })

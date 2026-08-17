@@ -35,6 +35,7 @@ import {
   type SessionEvent,
   type StepObservation,
 } from '../types'
+import { DirectionHint } from './DirectionHint'
 import { FrameOverlay } from './FrameOverlay'
 import { InstructionBanner } from './InstructionBanner'
 import { ResultView } from './ResultView'
@@ -348,6 +349,19 @@ export function EKYCCamera({
         progress={state.holdProgress}
         reduceMotion={reduceMotion}
       />
+
+      {/* Only while the framing is good: pointing somewhere is noise when the
+          user still has to get their face into the oval. */}
+      {state.framing === 'ok' && state.phase === 'running' ? (
+        <DirectionHint
+          challenge={state.challenge}
+          width={width}
+          height={height}
+          theme={theme}
+          reduceMotion={reduceMotion}
+          yawSign={tuning?.turn?.yawSign ?? 1}
+        />
+      ) : null}
 
       <View style={styles.hud} pointerEvents="box-none">
         <View style={styles.top} pointerEvents="box-none">

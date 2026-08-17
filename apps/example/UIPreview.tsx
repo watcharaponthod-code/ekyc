@@ -24,6 +24,7 @@ import {
 
 // Imported from source paths rather than the package root: the root barrel
 // pulls in EKYCCamera, and that pulls in the native camera modules.
+import { DirectionHint } from '@ekyc/react-native-ekyc/src/ui/DirectionHint'
 import { FrameOverlay } from '@ekyc/react-native-ekyc/src/ui/FrameOverlay'
 import { InstructionBanner } from '@ekyc/react-native-ekyc/src/ui/InstructionBanner'
 import { IntroView } from '@ekyc/react-native-ekyc/src/ui/IntroView'
@@ -231,6 +232,15 @@ export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
         framing={current.framing}
         progress={current.holdProgress}
       />
+
+      {current.framing === 'ok' ? (
+        <DirectionHint
+          challenge={current.challenge}
+          width={width}
+          height={height}
+          theme={theme}
+        />
+      ) : null}
 
       <View style={styles.hud} pointerEvents="box-none">
         <View style={styles.top} pointerEvents="box-none">
