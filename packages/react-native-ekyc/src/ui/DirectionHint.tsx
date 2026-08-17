@@ -20,7 +20,7 @@ export type DirectionHintProps = {
 }
 
 /** How far outside the oval the arrows sit. */
-const OUTSET = 26
+const OUTSET = 34
 const CHEVRONS = 3
 const CYCLE_MS = 900
 
@@ -123,13 +123,15 @@ function Chevron({
   // Each chevron leads the one behind it by a third of the cycle, so the group
   // reads as motion in one direction rather than three things blinking.
   const phase = index / CHEVRONS
-  const shift = (towardsLeft ? -1 : 1) * 14
+  const shift = (towardsLeft ? -1 : 1) * 18
 
+  // Never fully fades: a chevron that disappears reads as "nothing there",
+  // which is the complaint that got this component written in the first place.
   const opacity = reduceMotion
-    ? 0.55
+    ? 0.7
     : progress.interpolate({
         inputRange: [0, phase, Math.min(1, phase + 0.34), 1],
-        outputRange: [0.15, 0.9, 0.15, 0.15],
+        outputRange: [0.45, 1, 0.45, 0.45],
         extrapolate: 'clamp',
       })
   const translateX = reduceMotion
@@ -140,21 +142,25 @@ function Chevron({
         extrapolate: 'clamp',
       })
 
-  const size = 26
-  const step = index * (towardsLeft ? -18 : 18)
+  // Stacked vertically, not horizontally. The oval takes 74 % of the screen
+  // width, so there is only ~13 % of margin on each side — three chevrons in a
+  // row run off the edge, while the sides have plenty of vertical room. The
+  // outward translation still carries the direction.
+  const size = 44
+  const step = (index - 1) * 46
 
   return (
     <Animated.View
       style={[
         styles.floating,
-        { left: x + step - size / 2, top: y - size / 2, opacity, transform: [{ translateX }] },
+        { left: x - size / 2, top: y + step - size / 2, opacity, transform: [{ translateX }] },
       ]}
     >
       <Svg width={size} height={size} viewBox="0 0 24 24">
         <Path
           d={towardsLeft ? 'M15 4 L7 12 L15 20' : 'M9 4 L17 12 L9 20'}
           stroke={color}
-          strokeWidth={3}
+          strokeWidth={3.2}
           strokeLinecap="round"
           strokeLinejoin="round"
           fill="none"
