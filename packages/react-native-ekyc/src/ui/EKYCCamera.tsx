@@ -16,7 +16,7 @@ import {
   usePhotoOutput,
 } from 'react-native-vision-camera'
 import {
-  useFaceDetectorOutput,
+  createFaceDetectorOutput,
   type Face,
 } from 'react-native-vision-camera-face-detector'
 
@@ -60,6 +60,10 @@ export type EKYCCameraProps = {
   onProgress?: ((state: LivenessState) => void) | undefined
   /** Shows live yaw/pitch/eye numbers — use it once to calibrate `yawSign`. */
   debug?: boolean
+}
+
+function log(message: string, detail?: unknown): void {
+  if (__DEV__) console.warn(`[ekyc] ${message}`, detail ?? '')
 }
 
 type Screen =
@@ -282,19 +286,37 @@ export function EKYCCamera({
     [debug, onProgress],
   )
 
-  const detectorOutput = useFaceDetectorOutput({
-    performanceMode: 'fast',
-    runClassifications: true,
-    runLandmarks: false,
-    runContours: false,
-    trackingEnabled: false,
-    cameraFacing: 'front',
-    outputResolution: 'preview',
-    onFacesDetected,
-    onError: () => session.current?.abort('captureFailed'),
-  })
+  // Created exactly once, via the factory rather than `useFaceDetectorOutput`.
+  //
+  // Measured on device: the hook rebuilt the output on *every* render — its
+  // `useMemo` depends on a rest-object (`...options`) that is a fresh identity
+  // per call regardless of what you pass in — so the camera session
+  // reconfigured itself ~30 times a second, the preview never delivered a
+  // frame (black screen) and the session eventually errored out. Callbacks go
+  // through refs so the one output can reach the latest closure.
+  const facesRef = useRef(onFacesDetected)
+  facesRef.current = onFacesDetected
+  const detectorOutput = useMemo(
+    () =>
+      createFaceDetectorOutput({
+        performanceMode: 'fast',
+        runClassifications: true,
+        runLandmarks: false,
+        runContours: false,
+        trackingEnabled: false,
+        cameraFacing: 'front',
+        outputResolution: 'preview',
+        onFacesDetected: (faces: Face[]) => facesRef.current(faces),
+        onError: (error: Error) => {
+          log('face detector error', error)
+          session.current?.abort('captureFailed')
+        },
+      }),
+    [],
+  )
 
   const outputs = useMemo(() => [detectorOutput, photoOutput], [detectorOutput, photoOutput])
+
 
   // ---- render ------------------------------------------------------------
 
