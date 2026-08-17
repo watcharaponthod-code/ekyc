@@ -3,9 +3,13 @@ import { buildChallenges } from '../src/liveness/challenges'
 import type { SessionEvent } from '../src/types'
 import { feedFor, signal } from './helpers'
 
+// Tests pin the *mechanism*, so they fix the hold length instead of inheriting
+// the product default (which is tuned on real devices and may move).
+const HOLD = { holdMs: 700, captureAtProgress: 0.5 }
+
 function makeSession(names: Parameters<typeof buildChallenges>[0] = ['closeEyes', 'turnLeft']) {
   const events: SessionEvent[] = []
-  const session = new LivenessSession(buildChallenges(names), {}, (e) => events.push(e))
+  const session = new LivenessSession(buildChallenges(names), HOLD, (e) => events.push(e))
   session.start(0)
   return { session, events }
 }
@@ -157,7 +161,7 @@ describe('LivenessSession — failures', () => {
   it('times out the whole session', () => {
     const { session } = makeSession(['closeEyes'])
     // stay well framed but never satisfy, with a generous per-step budget
-    const s = new LivenessSession(buildChallenges(['closeEyes']), { perStepTimeoutMs: 999_000 })
+    const s = new LivenessSession(buildChallenges(['closeEyes']), { ...HOLD, perStepTimeoutMs: 999_000 })
     s.start(0)
     feedFor(s, { yaw: 40 }, 61_000, 0)
     expect(s.state.phase).toBe('failed')
@@ -192,7 +196,7 @@ describe('LivenessSession — failures', () => {
 
 describe('LivenessSession — clock hygiene', () => {
   it('caps a huge frame gap so a stalled camera cannot fake a hold', () => {
-    const session = new LivenessSession(buildChallenges([]), { perStepTimeoutMs: 999_000 })
+    const session = new LivenessSession(buildChallenges([]), { ...HOLD, perStepTimeoutMs: 999_000 })
     session.start(0)
     session.feed(signal({ t: 10_000 }))
     expect(session.state.holdProgress).toBeLessThan(1)
@@ -200,7 +204,7 @@ describe('LivenessSession — clock hygiene', () => {
   })
 
   it('ignores out-of-order timestamps instead of going backwards', () => {
-    const session = new LivenessSession(buildChallenges([]))
+    const session = new LivenessSession(buildChallenges([]), HOLD)
     session.start(0)
     session.feed(signal({ t: 300 }))
     const before = session.state.holdProgress

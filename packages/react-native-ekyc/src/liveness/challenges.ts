@@ -74,7 +74,7 @@ export class CloseEyesChallenge extends Challenge {
   }
 
   isSatisfied(signal: FaceSignal): boolean {
-    const { maxEyeOpen = 0.3 } = this.options
+    const { maxEyeOpen = 0.4 } = this.options
     return signal.leftEye <= maxEyeOpen && signal.rightEye <= maxEyeOpen
   }
 }

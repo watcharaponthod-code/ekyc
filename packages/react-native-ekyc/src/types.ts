@@ -103,11 +103,16 @@ export type SessionOptions = {
 }
 
 export const DEFAULT_SESSION_OPTIONS: SessionOptions = {
-  // Reported from a real phone: 700 ms felt like it demanded a slow, deliberate
-  // pose. 450 ms still gives the shutter (~150-400 ms) time to land while the
-  // pose is held, and lets a natural head turn count.
-  holdMs: 450,
-  captureAtProgress: 0.4,
+  // Fast by default. Stills come from the preview surface (no shutter lag), so
+  // the pose only has to be seen for a few frames: 250 ms at 30 fps is ~8
+  // consecutive detections, enough to reject a single noisy frame, short
+  // enough that a natural turn or a deliberate blink registers immediately.
+  // Reported from a real phone: 700 ms felt like it demanded a slow, posed
+  // performance; nobody holds a blink.
+  holdMs: 250,
+  // Capture as soon as the pose is confirmed — 30 % in is ~2-3 frames, so the
+  // frame is certainly of the pose, and the user is not asked to keep holding.
+  captureAtProgress: 0.3,
   perStepTimeoutMs: 12_000,
   totalTimeoutMs: 60_000,
   // Measured on device: the first frames arrive ~1 s after the camera opens
