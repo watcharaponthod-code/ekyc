@@ -2,13 +2,16 @@
   "name": "@ekyc/react-native-ekyc",
   "version": "0.1.0",
   "description": "On-device liveness capture + server-verified face identity for React Native",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
   "files": [
+    "lib",
     "src",
     "README.md"
   ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
     "typecheck": "tsc --noEmit",
     "test": "jest"
   },
@@ -33,5 +36,7 @@
     "ts-jest": "^29.4.0",
     "typescript": "~6.0.3"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "react-native": "src/index.ts",
+  "sideEffects": false
 }

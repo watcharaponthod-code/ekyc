@@ -45,6 +45,12 @@ The module stores **no biometric data on the device**.
 npm install @ekyc/react-native-ekyc
 ```
 
+Publishing it for your team: `npm publish` (set `publishConfig.registry` for a
+private registry). `prepare` builds `lib/` first, so consumers get compiled JS
+plus `.d.ts`. React Native apps resolve `react-native: "src/index.ts"` instead
+and let Metro compile the TypeScript directly — better stack traces, and no way
+to ship a stale build.
+
 Peer dependencies (all native, so a development build is required — this does not run in Expo Go):
 
 ```sh
