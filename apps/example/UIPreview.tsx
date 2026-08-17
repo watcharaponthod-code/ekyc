@@ -42,6 +42,23 @@ import type {
 
 const theme = defaultTheme
 const FPS = 20
+
+/**
+ * Web-only shim, for this demo screen only.
+ *
+ * Browsers do not line-break Thai (it has no inter-word spaces), so long Thai
+ * paragraphs push their container wider than the viewport under
+ * react-native-web. Real iOS and Android both break Thai correctly, so this
+ * belongs to the preview, not to the module.
+ */
+if (typeof document !== 'undefined' && !document.getElementById('ekyc-preview-shim')) {
+  const style = document.createElement('style')
+  style.id = 'ekyc-preview-shim'
+  style.textContent =
+    '*{word-break:break-word;overflow-wrap:anywhere}' +
+    'html,body,#root{overflow-x:hidden;max-width:100vw}'
+  document.head.appendChild(style)
+}
 const TICK_MS = Math.round(1000 / FPS)
 
 /** Server-issued order, faked. */
@@ -84,9 +101,30 @@ const FRAMING_OVERRIDES: Record<string, Partial<FaceSignal>> = {
   multipleFaces: { count: 2 },
 }
 
+/**
+ * On web, `?screen=capture&step=2&progress=0.6` jumps straight to one screen
+ * with the animation frozen. Handy for reviewing a single state, and for
+ * capturing deterministic screenshots.
+ */
+function urlParams(): { screen?: Mode; step?: number; progress?: number } {
+  if (typeof window === 'undefined' || !window.location?.search) return {}
+  const query = new URLSearchParams(window.location.search)
+  const screen = query.get('screen') as Mode | null
+  const step = query.get('step')
+  const progress = query.get('progress')
+  return {
+    ...(screen ? { screen } : {}),
+    ...(step != null ? { step: Number(step) } : {}),
+    ...(progress != null ? { progress: Number(progress) } : {}),
+  }
+}
+
 export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
   const { width, height } = useWindowDimensions()
-  const [mode, setMode] = useState<Mode>('intro')
+  const params = useRef(urlParams()).current
+  const frozen = params.step != null || params.progress != null
+
+  const [mode, setMode] = useState<Mode>(params.screen ?? 'intro')
   const [state, setState] = useState<LivenessState | null>(null)
   const [framing, setFraming] = useState<keyof typeof FRAMING_OVERRIDES>('ok')
   const [paused, setPaused] = useState(false)
@@ -110,7 +148,7 @@ export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
   }, [])
 
   useEffect(() => {
-    if (mode !== 'capture') return
+    if (mode !== 'capture' || frozen) return
     const timer = setInterval(() => {
       const current = session.current
       if (!current || pausedRef.current) return
@@ -124,7 +162,7 @@ export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
       setState(current.feed(signal))
     }, TICK_MS)
     return () => clearInterval(timer)
-  }, [mode])
+  }, [mode, frozen])
 
   if (mode === 'intro') {
     return <IntroView locale={locale} theme={theme} onStart={start} />
@@ -143,14 +181,24 @@ export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
     )
   }
 
-  const current = state ?? {
-    phase: 'running' as const,
-    stepIndex: 0,
-    stepCount: CHALLENGES.length + 1,
-    challenge: 'center' as ChallengeName,
-    holdProgress: 0,
-    framing: 'ok' as Framing,
-  }
+  const stepIndex = params.step ?? state?.stepIndex ?? 0
+  const current: LivenessState = frozen
+    ? {
+        phase: 'running',
+        stepIndex,
+        stepCount: CHALLENGES.length + 1,
+        challenge: (['center', ...CHALLENGES][stepIndex] ?? null) as ChallengeName | null,
+        holdProgress: params.progress ?? 0,
+        framing: framing === 'ok' ? 'ok' : (framing as Framing),
+      }
+    : (state ?? {
+        phase: 'running',
+        stepIndex: 0,
+        stepCount: CHALLENGES.length + 1,
+        challenge: 'center',
+        holdProgress: 0,
+        framing: 'ok',
+      })
   const t = strings(locale)
   const holding = current.holdProgress > 0.05
   const instruction = instructionFor(locale, current.framing, current.challenge, holding)
@@ -246,7 +294,7 @@ function Chip({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#101828' },
+  root: { flex: 1, backgroundColor: '#101828', overflow: 'hidden' },
   fakePreview: {
     position: 'absolute',
     top: 0,
@@ -275,7 +323,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: 'hidden',
   },
-  bottom: { paddingBottom: 34, gap: 16 },
+  bottom: { paddingBottom: 34, gap: 16, overflow: 'hidden' },
   dots: { alignItems: 'center' },
   controls: { paddingHorizontal: 16, gap: 8, alignItems: 'center' },
   chip: {

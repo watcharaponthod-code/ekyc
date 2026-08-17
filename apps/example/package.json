@@ -4,17 +4,20 @@
   "main": "index.ts",
   "dependencies": {
     "@ekyc/react-native-ekyc": "*",
+    "@expo/metro-runtime": "~57.0.10",
     "expo": "~57.0.13",
     "expo-haptics": "~57.0.1",
     "expo-secure-store": "~57.0.1",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-native": "0.86.2",
     "react-native-nitro-image": "*",
     "react-native-nitro-modules": "*",
     "react-native-svg": "15.15.4",
     "react-native-vision-camera": "^5.2.2",
-    "react-native-vision-camera-face-detector": "^2.0.6"
+    "react-native-vision-camera-face-detector": "^2.0.6",
+    "react-native-web": "^0.21.2"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
