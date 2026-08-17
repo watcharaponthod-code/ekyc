@@ -203,13 +203,22 @@ export function instructionFor(
   return holding ? dict.holdOn : dict.challenge[challenge]
 }
 
-/** Turn server reason codes into advice, deduplicated, most useful first. */
+/**
+ * Turn reason codes into advice, deduplicated, most useful first.
+ *
+ * Handles both sources: server codes like `PAD_LOW`, and the capture screen's
+ * own `LOCAL_<reason>` for failures that never reached the server — a lost
+ * face, a timeout, a camera that would not fire.
+ */
 export function explainReasons(locale: Locale, reasons: string[]): string[] {
   const dict = strings(locale)
   const seen = new Set<string>()
   const out: string[] = []
   for (const code of reasons) {
-    const text = dict.reason[code]
+    const local = code.startsWith('LOCAL_')
+      ? dict.localFailure[code.slice(6) as FailureReason]
+      : undefined
+    const text = local ?? dict.reason[code]
     if (text && !seen.has(text)) {
       seen.add(text)
       out.push(text)

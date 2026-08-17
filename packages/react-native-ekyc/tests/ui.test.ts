@@ -192,3 +192,20 @@ describe('hasVisualHint', () => {
     }
   })
 })
+
+describe('explainReasons — local failures', () => {
+  it('explains a failure that never reached the server', () => {
+    expect(explainReasons('th', ['LOCAL_faceLost'])).toEqual(['ใบหน้าหลุดจากกรอบ ลองใหม่อีกครั้ง'])
+    expect(explainReasons('en', ['LOCAL_timeout'])).toEqual(['That took too long. Try again.'])
+  })
+
+  it('covers every local failure reason', () => {
+    for (const reason of ['timeout', 'faceLost', 'multipleFaces', 'captureFailed', 'cancelled']) {
+      expect(explainReasons('th', [`LOCAL_${reason}`])[0]).not.toBe(strings('th').result.failTitle)
+    }
+  })
+
+  it('still handles server codes alongside', () => {
+    expect(explainReasons('en', ['LOCAL_faceLost', 'PAD_LOW'])).toHaveLength(2)
+  })
+})
