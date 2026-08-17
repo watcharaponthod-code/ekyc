@@ -30,13 +30,16 @@ export type EKYCClientOptions = {
 }
 
 /** One part of the multipart upload. Kept as plain data so it can be unit-tested. */
-export type EvidencePart = { name: string; value: unknown; filename?: string; type?: string }
+/** React Native's proprietary file part: `{ uri, name, type }`. */
+export type FilePart = { uri: string; name: string; type: string }
+export type EvidencePart = { name: string; value: string | FilePart; filename?: string; type?: string }
 
 /**
  * Turn an evidence bundle into the multipart parts the server expects.
  *
- * React Native's `FormData` accepts `{ uri, name, type }` for file parts, which
- * is why the value is `unknown` rather than `Blob`.
+ * File parts are described the React Native way (`{ uri, name, type }`);
+ * `submit` decides at upload time whether the host's `fetch` wants that or a
+ * Blob.
  */
 /**
  * React Native's FormData opens `{ uri }` through the platform's content
@@ -94,12 +97,40 @@ export class EKYCClient {
   async submit(sessionId: string, bundle: EvidenceBundle): Promise<Decision> {
     const form = new FormData()
     for (const part of buildEvidenceParts(bundle)) {
-      // RN's FormData takes `{ uri, name, type }`; the DOM lib types disagree.
-      form.append(part.name, part.value as string)
+      if (typeof part.value === 'string') {
+        form.append(part.name, part.value)
+        continue
+      }
+      const file = await this.readFile(part.value)
+      // Blob + filename is the standard signature; RN's own FormData ignores the
+      // third argument and takes the `{ uri, name, type }` object instead.
+      form.append(part.name, file as Blob, part.filename)
     }
     return this.json<Decision>('POST', `/v1/sessions/${encodeURIComponent(sessionId)}/submit`, {
       body: form,
     })
+  }
+
+  /**
+   * Turn a captured file into something the host's `fetch` can put in a
+   * multipart body.
+   *
+   * Two `fetch`es exist in the React Native world and they disagree here.
+   * Expo's (the global on every Expo app since SDK 52) rejects React Native's
+   * proprietary `{ uri }` part outright ("Unsupported FormDataPart") — the
+   * upload dies on the device before a byte leaves it — but can read `file://`
+   * URLs itself, so we hand it a Blob. Bare React Native is the mirror image:
+   * its networking cannot fetch `file://` but streams `{ uri }` parts natively.
+   * Try the standard route; fall back to the proprietary one.
+   */
+  private async readFile(file: FilePart): Promise<Blob | FilePart> {
+    try {
+      const response = await this.fetchImpl(file.uri)
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      return await response.blob()
+    } catch {
+      return file
+    }
   }
 
   listPersons(): Promise<Person[]> {

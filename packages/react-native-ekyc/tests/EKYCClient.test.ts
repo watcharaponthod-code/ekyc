@@ -98,18 +98,51 @@ describe('EKYCClient', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer t')
   })
 
-  it('uploads evidence to the session submit endpoint', async () => {
-    const fetchImpl = jest.fn(async () =>
-      jsonResponse({ decision: 'pass', reasons: [], scores: {}, personId: 'p1' }),
+  it('uploads evidence to the session submit endpoint, reading each frame through fetch as a Blob', async () => {
+    const fetchImpl = jest.fn(async (url: string) =>
+      url.startsWith('file://')
+        ? ({ ok: true, status: 200, blob: async () => new Blob(['jpeg'], { type: 'image/jpeg' }) } as Response)
+        : jsonResponse({ decision: 'pass', reasons: [], scores: {}, personId: 'p1' }),
     )
     const client = new EKYCClient({ baseUrl: 'https://x.test', fetchImpl: fetchImpl as never })
 
     const decision = await client.submit('s 1', bundle)
 
     expect(decision.decision).toBe('pass')
-    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
-    expect(url).toBe('https://x.test/v1/sessions/s%201/submit')
-    expect(init.body).toBeInstanceOf(FormData)
+    const urls = fetchImpl.mock.calls.map(([u]) => u as string)
+    expect(urls).toEqual(['file:///tmp/a.jpg', 'file:///tmp/b.jpg', 'https://x.test/v1/sessions/s%201/submit'])
+    const [, init] = fetchImpl.mock.calls[2] as unknown as [string, RequestInit]
+    const form = init.body as FormData
+    expect(form.getAll('frames').every((v) => v instanceof Blob)).toBe(true)
+    expect((form.getAll('frames')[0] as File).name).toBe('neutral.jpg')
+  })
+
+  it("falls back to React Native's { uri } part when the host fetch cannot read file://", async () => {
+    // React Native's FormData accepts arbitrary objects; the DOM one in this
+    // test runtime does not, so stand in a minimal RN-shaped FormData.
+    const DomFormData = globalThis.FormData
+    class RNFormData {
+      parts: Array<[string, unknown]> = []
+      append(name: string, value: unknown) {
+        this.parts.push([name, value])
+      }
+    }
+    globalThis.FormData = RNFormData as unknown as typeof FormData
+    try {
+      const fetchImpl = jest.fn(async (url: string) => {
+        if (url.startsWith('file://')) throw new TypeError('Network request failed')
+        return jsonResponse({ decision: 'pass', reasons: [], scores: {}, personId: 'p1' })
+      })
+      const client = new EKYCClient({ baseUrl: 'https://x.test', fetchImpl: fetchImpl as never })
+
+      await client.submit('s1', bundle)
+
+      const [, init] = fetchImpl.mock.calls[fetchImpl.mock.calls.length - 1] as unknown as [string, RequestInit]
+      const parts = (init.body as unknown as RNFormData).parts
+      expect(parts[1]).toEqual(['frames', { uri: 'file:///tmp/a.jpg', name: 'neutral.jpg', type: 'image/jpeg' }])
+    } finally {
+      globalThis.FormData = DomFormData
+    }
   })
 
   it('turns transport failures into a retriable NETWORK error', async () => {
@@ -129,7 +162,10 @@ describe('EKYCClient', () => {
   it('maps a missing session to SESSION_EXPIRED', async () => {
     const client = new EKYCClient({
       baseUrl: 'https://x.test',
-      fetchImpl: (async () => jsonResponse({ detail: 'gone' }, 404)) as never,
+      fetchImpl: (async (url: string) =>
+        url.startsWith('file://')
+          ? ({ ok: true, status: 200, blob: async () => new Blob(['jpeg']) } as Response)
+          : jsonResponse({ detail: 'gone' }, 404)) as never,
     })
 
     await expect(client.submit('s1', bundle)).rejects.toMatchObject({ code: 'SESSION_EXPIRED' })

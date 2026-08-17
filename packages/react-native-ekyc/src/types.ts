@@ -112,14 +112,17 @@ export type SessionOptions = {
 export const DEFAULT_SESSION_OPTIONS: SessionOptions = {
   // Fast by default. Stills come from the preview surface (no shutter lag), so
   // the pose only has to be seen for a couple of frames.
-  // ~120 ms = 2 detections at ~15-20 fps (what ML Kit fast mode actually
-  // delivers at 720p on a mid-range phone) or 4-7 at 30-60. Enough to reject a
-  // single mis-detection; short enough that a quick turn or an ordinary blink
-  // is accepted at the speed a person does it.
-  holdMs: 120,
-  // Grab the frame on the very first confirming detection. With snapshot
-  // capture there is no shutter lag to hide, so nothing is gained by waiting.
-  captureAtProgress: 0,
+  // Tuned on device in both directions: 700 ms read as a slow, posed
+  // performance; 120 ms (the fastest the detector can confirm) read as "too
+  // quick to trust". 400 ms is a deliberate turn — the ring visibly fills —
+  // and gives the head time to reach a clear angle. Blink ignores this: it
+  // completes on one frame (see CloseEyesChallenge).
+  holdMs: 400,
+  // Capture mid-hold, not at the first confirming frame: the phone confirms a
+  // turn at 18° while the server wants 22° from neutral, and half-way through
+  // the hold the head is well past both. Snapshot capture has no shutter lag,
+  // so mid-hold is still mid-hold in the frame.
+  captureAtProgress: 0.5,
   minStepMs: 250,
   perStepTimeoutMs: 12_000,
   totalTimeoutMs: 60_000,
