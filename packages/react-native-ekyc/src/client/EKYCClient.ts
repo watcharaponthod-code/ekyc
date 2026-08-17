@@ -185,7 +185,9 @@ export class EKYCClient {
       }
       throw new EKYCError(
         'SERVER',
-        `Server returned ${response.status} for ${method} ${path}`,
+        // Include the server's response body: a 422 is otherwise opaque on the
+        // device, and the body names the offending field.
+        `Server returned ${response.status} for ${method} ${path}${detail ? `: ${detail.slice(0, 300)}` : ''}`,
         response.status >= 500,
         detail,
       )

@@ -52,6 +52,24 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="eKYC verification server", version=settings.version, lifespan=lifespan)
 
 
+from fastapi.exceptions import RequestValidationError  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+from starlette.requests import Request  # noqa: E402
+
+
+@app.exception_handler(RequestValidationError)
+async def _log_validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Turn FastAPI's opaque 422 into a logged line naming the offending field.
+
+    A submit that fails request validation (a form field the phone omitted, a
+    part the server could not read as a file) otherwise reaches the device as a
+    bare "Server returned 422" with no way to tell what was wrong.
+    """
+    log_event("request.invalid", path=str(request.url.path),
+              errors=str(exc.errors())[:500])
+    return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
+
 @lru_cache(maxsize=1)
 def get_backend() -> FaceBackend:
     """Load the vision stack once, per `EKYC_BACKEND`."""
@@ -110,6 +128,11 @@ async def submit_evidence(
     try:
         parsed = EvidenceManifest.model_validate_json(manifest)
     except Exception as error:  # noqa: BLE001
+        # Log the real reason: a silent 422 on the phone is otherwise
+        # indistinguishable from a network failure. `manifest[:400]` is the raw
+        # body so a bad field value is visible, not just its name.
+        log_event("submit.rejected", session=session_id, reason="MANIFEST_INVALID",
+                  error=str(error)[:400], manifest=manifest[:400])
         raise HTTPException(status_code=422, detail="MANIFEST_INVALID") from error
 
     try:

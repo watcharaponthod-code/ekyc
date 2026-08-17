@@ -139,6 +139,20 @@ class TestSubmission:
         )
         assert response.status_code == 422
 
+    def test_null_or_nan_telemetry_does_not_reject_the_submission(self, client, jpeg_bytes):
+        # ML Kit sometimes yields NaN, and JS `x ?? 0` does not catch it, so it
+        # reaches the server as JSON null. The observed/capture values are
+        # advisory — the server re-measures from the pixels — so a null must
+        # never turn a real liveness run into a 422.
+        session = make_session(client)
+        manifest = manifest_for(session)
+        manifest["steps"][1]["observed"]["yaw"] = None
+        manifest["steps"][1]["observed"]["leftEye"] = None
+        manifest["capture"]["fps"] = None
+        manifest["capture"]["frameHeight"] = None
+        response = submit(client, session, jpeg_bytes, manifest=manifest)
+        assert response.status_code == 200, response.text
+
     def test_a_missing_frame_fails_the_decision_not_the_request(self, client, jpeg_bytes):
         session = make_session(client)
         response = submit(client, session, jpeg_bytes, keys=["neutral"])
