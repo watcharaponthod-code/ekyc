@@ -1,0 +1,30 @@
+{
+  "name": "example",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "dependencies": {
+    "expo": "~57.0.13",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.2",
+    "@ekyc/react-native-ekyc": "*",
+    "react-native-vision-camera": "^5.2.2",
+    "react-native-vision-camera-face-detector": "^2.0.6",
+    "react-native-nitro-modules": "*",
+    "react-native-nitro-image": "*",
+    "react-native-svg": "^15.14.0",
+    "expo-haptics": "~15.0.7",
+    "expo-secure-store": "~15.0.7"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "private": true
+}

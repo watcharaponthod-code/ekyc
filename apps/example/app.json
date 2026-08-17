@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "eKYC Example",
+    "slug": "ekyc-example",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.example.ekyc",
+      "infoPlist": {
+        "NSCameraUsageDescription": "ใช้กล้องหน้าเพื่อยืนยันตัวตนของคุณ / Used to verify your identity with a face scan.",
+        "NSFaceIDUsageDescription": "ใช้ Face ID เพื่อเข้าสู่ระบบครั้งถัดไป / Used to unlock the app on later visits."
+      }
+    },
+    "android": {
+      "package": "com.example.ekyc",
+      "permissions": ["android.permission.CAMERA"],
+      "adaptiveIcon": {
+        "backgroundColor": "#070A12",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "ใช้กล้องหน้าเพื่อยืนยันตัวตนของคุณ",
+          "enableMicrophonePermission": false
+        }
+      ]
+    ],
+    "web": {
+      "favicon": "./assets/favicon.png"
+    }
+  }
+}
