@@ -56,7 +56,7 @@ export class LivenessSession {
       stepIndex: this.stepIndex,
       stepCount: this.challenges.length,
       challenge: challenge ? challenge.name : null,
-      holdProgress: Math.min(1, this.heldMs / this.options.holdMs),
+      holdProgress: this.currentHold > 0 ? Math.min(1, this.heldMs / this.currentHold) : 0,
       framing: this.framing,
       ...(this.reason ? { reason: this.reason } : {}),
     }
@@ -74,6 +74,11 @@ export class LivenessSession {
     this.badFramingSince = null
     this.badFramingKind = null
     return this.state
+  }
+
+  /** Hold required by the current step: the challenge's own, else the session's. */
+  private get currentHold(): number {
+    return this.challenges[this.stepIndex]?.holdMs ?? this.options.holdMs
   }
 
   /** Feed one camera frame. Returns the state the UI should render. */
@@ -103,6 +108,9 @@ export class LivenessSession {
       return this.state
     }
 
+    // Too soon after the step began to count — see `SessionOptions.minStepMs`.
+    if (signal.t - this.stepStartedAt < this.options.minStepMs) return this.state
+
     const challenge = this.challenges[this.stepIndex]!
     if (!challenge.isSatisfied(signal)) {
       this.resetHold()
@@ -111,13 +119,14 @@ export class LivenessSession {
 
     this.heldMs += delta
 
-    const progress = this.heldMs / this.options.holdMs
+    const hold = this.currentHold
+    const progress = hold > 0 ? this.heldMs / hold : 1
     if (!this.capturedThisRun && progress >= this.options.captureAtProgress) {
       this.capturedThisRun = true
       this.onEvent({ type: 'capture', challenge: challenge.name, stepIndex: this.stepIndex })
     }
 
-    if (this.heldMs >= this.options.holdMs) {
+    if (this.heldMs >= hold) {
       this.onEvent({ type: 'stepComplete', challenge: challenge.name, stepIndex: this.stepIndex })
       this.advance(signal.t)
     }

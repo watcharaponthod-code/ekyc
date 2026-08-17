@@ -11,10 +11,8 @@ import {
 } from 'react-native'
 import {
   Camera,
-  CommonResolutions,
   useCameraDevice,
   useCameraPermission,
-  usePhotoOutput,
   type CameraRef,
 } from 'react-native-vision-camera'
 import {
@@ -64,12 +62,8 @@ export type EKYCCameraProps = {
   debug?: boolean
 }
 
-/**
- * Once a device has rejected the three-stream configuration it always will;
- * remembering the answer for the process lifetime saves every later session
- * the failed attempt, the error, and the reconfigure.
- */
-let rememberedCaptureMode: 'photo' | 'snapshot' = 'photo'
+/** Prefer 60 fps; harmless where unavailable. Module-level so its identity is stable. */
+const CAMERA_CONSTRAINTS = [{ fps: 60 }]
 
 /** Last few diagnostic lines, kept so a phone with no cable can still show why. */
 const RECENT_LOG: string[] = []
@@ -122,12 +116,6 @@ export function EKYCCamera({
   const { hasPermission, requestPermission } = useCameraPermission()
 
   const [screen, setScreen] = useState<Screen>({ kind: 'starting' })
-  // How stills are taken. `photo` adds an ImageCapture stream — the sharpest
-  // frames, and the only option on iOS. Some Android front cameras (LIMITED /
-  // LEGACY hardware) refuse a third stream alongside preview + analysis with
-  // "Failed to apply the stream configuration"; on those we drop to
-  // `snapshot`, which reads the preview surface and needs no extra stream.
-  const [captureMode, setCaptureMode] = useState<'photo' | 'snapshot'>(() => rememberedCaptureMode)
   const cameraRef = useRef<CameraRef>(null)
   const [state, setState] = useState<LivenessState>(idleState)
   const [reduceMotion, setReduceMotion] = useState(false)
@@ -150,20 +138,11 @@ export function EKYCCamera({
   const startedAt = useRef(0)
   const latest = useRef<FaceSignal | null>(null)
   const submitted = useRef(false)
+  // Detections per second, measured — the one number that decides how fast a
+  // turn or a blink can register. Reported with the submission so it lands in
+  // the server log next to the decision.
+  const detections = useRef({ count: 0, since: 0 })
 
-  const photoOutput = usePhotoOutput({
-    // 16:9, the same aspect the face detector's ImageAnalysis stream asks for
-    // (1280x720). Mixing a 4:3 capture with a 16:9 analysis stream on top of
-    // the preview is a three-stream, two-aspect configuration that front
-    // cameras on LIMITED/LEGACY hardware refuse outright — seen on a real
-    // Android 35 phone as "Failed to apply the stream configuration for the
-    // given outputs". Matching aspects lets CameraX share a stream group.
-    targetResolution: CommonResolutions.HD_16_9,
-    quality: 0.9,
-    // Speed matters more than the last few percent of detail: the shutter
-    // fires mid-hold, and a slow one lets the pose lapse before it lands.
-    qualityPrioritization: 'speed',
-  })
 
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {})
@@ -197,37 +176,36 @@ export function EKYCCamera({
   // because each hold effectively waited for disk I/O.
   const pendingCaptures = useRef<Promise<void>[]>([])
 
-  const capture = useCallback(
-    (key: string) => {
-      const startedAt = Date.now()
-      const job = (async () => {
-        try {
-          let path: string
-          if (captureMode === 'photo') {
-            const photo = await photoOutput.capturePhotoToFile(
-              // No shutter sound: not one surveyed identity SDK plays audio here.
-              { enableShutterSound: false, flashMode: 'off' },
-              {},
-            )
-            path = photo.filePath
-          } else {
-            const camera = cameraRef.current
-            if (!camera) throw new Error('camera not mounted')
-            // Grab the pixels NOW (fast, in memory); encode off the critical path.
-            const image = await camera.takeSnapshot()
-            path = await image.saveToTemporaryFileAsync('jpg', 85)
-          }
-          frames.current.set(key, path)
-          log('captured', `${key} via ${captureMode} ${Date.now() - startedAt}ms`)
-        } catch (error) {
-          log('capture failed', `${key}: ${(error as Error).message}`)
-          session.current?.abort('captureFailed')
-        }
-      })()
-      pendingCaptures.current.push(job)
-    },
-    [photoOutput, captureMode],
-  )
+  // Stills come from the preview surface (`takeSnapshot`), never from an
+  // ImageCapture stream. Three reasons, each sufficient on its own:
+  //  - no shutter lag: the pixels are grabbed the instant the pose is
+  //    confirmed, so a blink is actually in the frame (a photo capture
+  //    lands 150–400 ms later, after the eyes have reopened);
+  //  - no third stream: LIMITED/LEGACY front cameras (seen on a real Android
+  //    35 phone) refuse preview + analysis + capture with "Failed to apply
+  //    the stream configuration"; preview + analysis works everywhere;
+  //  - no 12-MP JPEG encode on the critical path — a preview-sized frame
+  //    encodes in tens of milliseconds, a full sensor frame in seconds.
+  // Preview resolution (screen-sized) is far more than the server's models
+  // consume (ArcFace 112 px, MiniFASNet 80 px), so nothing is lost.
+  const capture = useCallback((key: string) => {
+    const startedAt = Date.now()
+    const job = (async () => {
+      try {
+        const camera = cameraRef.current
+        if (!camera) throw new Error('camera not mounted')
+        // Grab the pixels NOW (fast, in memory); encode off the critical path.
+        const image = await camera.takeSnapshot()
+        const path = await image.saveToTemporaryFileAsync('jpg', 85)
+        frames.current.set(key, path)
+        log('captured', `${key} ${Date.now() - startedAt}ms`)
+      } catch (error) {
+        log('capture failed', `${key}: ${(error as Error).message}`)
+        session.current?.abort('captureFailed')
+      }
+    })()
+    pendingCaptures.current.push(job)
+  }, [])
 
   // ---- upload ------------------------------------------------------------
 
@@ -237,7 +215,12 @@ export function EKYCCamera({
     submitted.current = true
     await Promise.all(pendingCaptures.current)
     pendingCaptures.current = []
-    log('submitting', `${frames.current.size} frames`)
+    // A capture that failed has already aborted the session; do not upload a
+    // bundle the server can only reject as FRAME_MISSING.
+    if (session.current?.state.phase === 'failed') return
+    const { count, since } = detections.current
+    const fps = since ? Math.round((count * 1000) / Math.max(1, Date.now() - since)) : 0
+    log('submitting', `${frames.current.size} frames, detector ${fps} fps`)
 
     const evidence: EvidenceFrame[] = [...frames.current].map(([key, uri]) => ({ key, uri }))
     try {
@@ -247,10 +230,11 @@ export function EKYCCamera({
           startedAt: startedAt.current,
           finishedAt: Date.now(),
           steps: observations.current,
-          capture: { frameWidth: width, frameHeight: height, fps: 30, mirrored: true },
+          capture: { frameWidth: width, frameHeight: height, fps, mirrored: true },
         },
         frames: evidence,
       })
+      log('decision', `${decision.decision} ${decision.reasons.join(',')}`)
       session.current?.notifyResult(decision.decision === 'pass')
       if (decision.decision === 'pass') hapticSuccess()
       else hapticFailure()
@@ -259,6 +243,7 @@ export function EKYCCamera({
     } catch (error) {
       hapticFailure()
       const code = (error as { code?: string }).code ?? 'NETWORK'
+      log('submit failed', `${code}: ${(error as Error).message}`)
       setScreen({ kind: 'result', passed: false, reasons: [code] })
     }
   }, [client, width, height])
@@ -293,6 +278,7 @@ export function EKYCCamera({
       const now = Date.now()
       startedAt.current = now
       stepStartedAt.current = now
+      detections.current = { count: 0, since: 0 }
 
       const next = new LivenessSession(
         challenges,
@@ -378,12 +364,25 @@ export function EKYCCamera({
     (faces: Face[]) => {
       const current = session.current
       if (!current) return
+      const now = Date.now()
+      if (detections.current.since === 0) detections.current.since = now
+      detections.current.count += 1
       const signal = toSignal(faces)
       latest.current = signal
       if (debug) setLive(signal)
       const next = current.feed(signal)
-      setState(next)
       onProgressRef.current?.(next)
+      // Re-render only when something visible moved. Most frames while the
+      // user is getting into position change nothing, and a full re-render per
+      // detection competes with the detector's own callbacks for the JS thread.
+      setState((prev) =>
+        prev.phase === next.phase &&
+        prev.stepIndex === next.stepIndex &&
+        prev.framing === next.framing &&
+        prev.holdProgress === next.holdProgress
+          ? prev
+          : next,
+      )
     },
     [debug],
   )
@@ -418,11 +417,7 @@ export function EKYCCamera({
     [],
   )
 
-  const outputs = useMemo(
-    () => (captureMode === 'photo' ? [detectorOutput, photoOutput] : [detectorOutput]),
-    [detectorOutput, photoOutput, captureMode],
-  )
-
+  const outputs = useMemo(() => [detectorOutput], [detectorOutput])
 
   // ---- render ------------------------------------------------------------
 
@@ -481,33 +476,24 @@ export function EKYCCamera({
         <Camera
           style={StyleSheet.absoluteFill}
           device={device}
-          isActive={screen.kind === 'capturing' && state.phase === 'running'}
+          // Stay on through `uploading`: the last step's snapshot may still be
+          // in flight when the session completes, and deactivating the camera
+          // under it fails the capture (seen: "Camera is closed" on the final
+          // frame of an otherwise perfect run). Off again once there is a verdict.
+          isActive={screen.kind === 'capturing' && (state.phase === 'running' || state.phase === 'uploading')}
           outputs={outputs}
+          // Ask the pipeline for 60 fps where the sensor supports it. VisionCamera
+          // treats this as a preference and falls back gracefully, so it costs
+          // nothing on a 30 fps front camera and halves frame latency on a 60.
+          constraints={CAMERA_CONSTRAINTS}
+          onSessionConfigSelected={(config) => log('camera config', `${config.selectedFPS ?? '?'} fps`)}
           ref={cameraRef}
-          // `PreviewView.bitmap` — what takeSnapshot() reads — is null on a
-          // SurfaceView. TextureView costs a little GPU headroom, which we
-          // can afford, and makes the snapshot path actually work.
-          implementationMode={captureMode === 'snapshot' ? 'compatible' : 'performance'}
+          // `PreviewView.bitmap` — what takeSnapshot() reads — needs a
+          // TextureView; a SurfaceView returns null. The GPU cost is nothing
+          // we notice, and it makes the snapshot path work on every device.
+          implementationMode="compatible"
           onError={(error) => {
             log('camera error', error)
-            const streamConfigFailed = /stream configuration/i.test(error.message)
-            if (streamConfigFailed && Platform.OS === 'android') {
-              if (captureMode === 'photo') {
-                // This camera cannot run preview + analysis + capture together.
-                // Drop the capture stream and take stills from the preview
-                // instead. The session keeps running — the outputs prop change
-                // reconfigures the camera in place.
-                log('capture mode', 'photo -> snapshot (device rejected 3 streams)')
-                rememberedCaptureMode = 'snapshot'
-                setCaptureMode('snapshot')
-              }
-              // The rejected configuration can be reported more than once while
-              // CameraX tears it down and applies the two-stream one. Those
-              // repeats are not new failures; ignore them and let the reconfigure
-              // land. Seen on device: the second report killed a session that
-              // the fallback was about to rescue.
-              return
-            }
             // A camera that will not start is not a liveness failure; show the
             // real message so a device-specific problem can be diagnosed from
             // a screenshot or the server log.

@@ -5,11 +5,14 @@ import { feedFor, signal } from './helpers'
 
 // Tests pin the *mechanism*, so they fix the hold length instead of inheriting
 // the product default (which is tuned on real devices and may move).
-const HOLD = { holdMs: 700, captureAtProgress: 0.5 }
+const HOLD = { holdMs: 700, captureAtProgress: 0.5, minStepMs: 0 }
 
-function makeSession(names: Parameters<typeof buildChallenges>[0] = ['closeEyes', 'turnLeft']) {
+function makeSession(
+  names: Parameters<typeof buildChallenges>[0] = ['closeEyes', 'turnLeft'],
+  options: Partial<typeof HOLD> = {},
+) {
   const events: SessionEvent[] = []
-  const session = new LivenessSession(buildChallenges(names), HOLD, (e) => events.push(e))
+  const session = new LivenessSession(buildChallenges(names), { ...HOLD, ...options }, (e) => events.push(e))
   session.start(0)
   return { session, events }
 }
@@ -67,28 +70,49 @@ describe('LivenessSession — happy path', () => {
 
 describe('LivenessSession — hold discipline', () => {
   it('rewinds the hold when the pose breaks', () => {
-    const { session } = makeSession(['closeEyes'])
+    const { session } = makeSession(['turnLeft'])
     feedFor(session, CENTERED, 800, 0)
 
-    let t = feedFor(session, EYES_SHUT, 400, 800)
+    let t = feedFor(session, TURNED_LEFT, 400, 800)
     expect(session.state.holdProgress).toBeGreaterThan(0.4)
 
-    // eyes open again — progress must collapse, step must not complete
+    // head back to centre — progress must collapse, step must not complete
     session.feed(signal({ t: (t += 33) }))
     expect(session.state.holdProgress).toBe(0)
     expect(session.state.stepIndex).toBe(1)
   })
 
   it('re-captures after a broken hold rather than trusting the stale photo', () => {
-    const { session, events } = makeSession(['closeEyes'])
+    const { session, events } = makeSession(['turnLeft'])
     feedFor(session, CENTERED, 800, 0)
 
-    let t = feedFor(session, EYES_SHUT, 400, 800)
+    let t = feedFor(session, TURNED_LEFT, 400, 800)
     session.feed(signal({ t: (t += 33) })) // break
-    feedFor(session, EYES_SHUT, 800, t)
+    feedFor(session, TURNED_LEFT, 800, t)
 
-    const captures = events.filter((e) => e.type === 'capture' && e.challenge === 'closeEyes')
+    const captures = events.filter((e) => e.type === 'capture' && e.challenge === 'turnLeft')
     expect(captures.length).toBe(2)
+  })
+
+  it('ignores a pose held in the first minStepMs of a step (server would call it implausible)', () => {
+    const { session, events } = makeSession(['turnLeft'], { minStepMs: 250 })
+    const t = feedFor(session, CENTERED, 800, 0)
+    // already turned when the step begins: nothing counts until 250 ms in
+    feedFor(session, TURNED_LEFT, 240, t)
+    expect(events.filter((e) => e.type === 'capture' && e.challenge === 'turnLeft').length).toBe(0)
+    expect(session.state.holdProgress).toBe(0)
+  })
+
+  it('treats a challenge with holdMs 0 as an event: one frame captures and completes it', () => {
+    const { session, events } = makeSession(['closeEyes', 'turnLeft'])
+    const t = feedFor(session, CENTERED, 800, 0)
+    expect(session.state.challenge).toBe('closeEyes')
+
+    session.feed(signal({ ...EYES_SHUT, t: t + 300 })) // a single blink frame, past minStepMs
+
+    expect(events.filter((e) => e.type === 'capture' && e.challenge === 'closeEyes').length).toBe(1)
+    expect(events.some((e) => e.type === 'stepComplete' && e.challenge === 'closeEyes')).toBe(true)
+    expect(session.state.challenge).toBe('turnLeft')
   })
 
   it('does not advance while framing is bad, even with a satisfied pose', () => {

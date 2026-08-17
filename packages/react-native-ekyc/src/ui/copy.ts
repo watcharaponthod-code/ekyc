@@ -49,20 +49,20 @@ const th: Strings = {
   },
   challenge: {
     center: 'มองตรงมาที่กล้อง',
-    closeEyes: 'หลับตาค้างไว้',
-    turnLeft: 'หันหน้าไปทางซ้ายช้าๆ',
-    turnRight: 'หันหน้าไปทางขวาช้าๆ',
+    closeEyes: 'กระพริบตา',
+    turnLeft: 'หันหน้าไปทางซ้าย',
+    turnRight: 'หันหน้าไปทางขวา',
     smile: 'ยิ้มค้างไว้',
   },
   holdOn: 'ค้างไว้',
   uploading: 'กำลังตรวจสอบ…',
   intro: {
     title: 'ยืนยันว่าเป็นคุณ',
-    body: 'ใช้เวลาประมาณ 15 วินาที ทำตามคำสั่งบนหน้าจอทีละขั้น',
+    body: 'ใช้เวลาไม่กี่วินาที ทำตามคำสั่งบนหน้าจอทีละขั้น',
     steps: [
       'อยู่ในที่ที่มีแสงพอ และถอดแว่นกันแดด',
       'จัดใบหน้าให้อยู่ในกรอบวงรี',
-      'ทำตามคำสั่ง แล้วค้างท่าไว้จนวงแหวนเต็ม',
+      'ทำตามคำสั่ง: หันซ้าย หันขวา กระพริบตา',
     ],
     start: 'เริ่มสแกน',
     consent: 'ภาพใบหน้าจะถูกส่งไปตรวจสอบและลบทิ้งทันทีหลังตรวจเสร็จ ระบบเก็บเฉพาะข้อมูลเชิงตัวเลขที่ย้อนกลับเป็นภาพไม่ได้',
@@ -124,7 +124,7 @@ const en: Strings = {
   },
   challenge: {
     center: 'Look straight at the camera',
-    closeEyes: 'Close your eyes and hold',
+    closeEyes: 'Blink',
     turnLeft: 'Turn your head left',
     turnRight: 'Turn your head right',
     smile: 'Smile and hold',
@@ -133,11 +133,11 @@ const en: Strings = {
   uploading: 'Checking…',
   intro: {
     title: "Let's check it's you",
-    body: 'Takes about 15 seconds. Follow one instruction at a time.',
+    body: 'Takes a few seconds. Follow one instruction at a time.',
     steps: [
       'Find even light and take off sunglasses',
       'Fit your face inside the oval',
-      'Follow each prompt and hold until the ring closes',
+      'Follow each prompt: turn left, turn right, blink',
     ],
     start: 'Start scan',
     consent:

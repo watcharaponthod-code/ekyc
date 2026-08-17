@@ -12,4 +12,11 @@ export abstract class Challenge {
 
   /** True while the user is currently doing the thing. */
   abstract isSatisfied(signal: FaceSignal): boolean
+
+  /**
+   * How long the pose must be held, overriding the session's `holdMs`.
+   * `0` makes the step an *event*: one confirming frame completes it.
+   * `undefined` (the default) means "use the session's hold".
+   */
+  readonly holdMs?: number
 }

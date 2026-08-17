@@ -38,6 +38,17 @@ export type EvidencePart = { name: string; value: unknown; filename?: string; ty
  * React Native's `FormData` accepts `{ uri, name, type }` for file parts, which
  * is why the value is `unknown` rather than `Blob`.
  */
+/**
+ * React Native's FormData opens `{ uri }` through the platform's content
+ * resolver, which needs a scheme. Native capture APIs hand back bare paths
+ * (`/data/user/0/…/cache/x.jpg`); sent as-is the request dies on the device
+ * with "Network request failed" and the server never sees the submit — the
+ * whole run then reads as "verification failed" for no visible reason.
+ */
+export function asFileUri(pathOrUri: string): string {
+  return /^[a-z][a-z0-9+.-]*:/i.test(pathOrUri) ? pathOrUri : `file://${pathOrUri}`
+}
+
 export function buildEvidenceParts(bundle: EvidenceBundle): EvidencePart[] {
   const parts: EvidencePart[] = [
     { name: 'manifest', value: JSON.stringify(bundle.manifest), type: 'application/json' },
@@ -49,7 +60,7 @@ export function buildEvidenceParts(bundle: EvidenceBundle): EvidencePart[] {
     const filename = `${frame.key}.jpg`
     parts.push({
       name: 'frames',
-      value: { uri: frame.uri, name: filename, type: 'image/jpeg' },
+      value: { uri: asFileUri(frame.uri), name: filename, type: 'image/jpeg' },
       filename,
       type: 'image/jpeg',
     })

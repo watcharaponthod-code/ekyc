@@ -78,7 +78,7 @@ describe('instructionFor', () => {
   })
 
   it('asks for the challenge once framing is good', () => {
-    expect(instructionFor('en', 'ok', 'closeEyes', false)).toBe('Close your eyes and hold')
+    expect(instructionFor('en', 'ok', 'closeEyes', false)).toBe('Blink')
   })
 
   it('switches to hold coaching while the pose is being held', () => {
@@ -90,7 +90,7 @@ describe('instructionFor', () => {
   })
 
   it('speaks Thai too', () => {
-    expect(instructionFor('th', 'ok', 'closeEyes', false)).toBe('หลับตาค้างไว้')
+    expect(instructionFor('th', 'ok', 'closeEyes', false)).toBe('กระพริบตา')
     expect(instructionFor('th', 'tooClose', null, false)).toBe('ถอยออกมาเล็กน้อย')
   })
 })

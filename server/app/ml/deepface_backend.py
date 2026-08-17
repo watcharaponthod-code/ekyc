@@ -115,6 +115,21 @@ class DeepFaceMediaPipeBackend:
                     log.info("deepface MiniFASNet ensemble loaded")
         return self._fasnet
 
+    def warm_up(self) -> None:
+        """Load every model and run each once, so the first real request is fast.
+
+        Cold, the first submit costs ~20 s (ArcFace and MiniFASNet weights,
+        MediaPipe task, TF graph tracing) — longer than the mobile client's
+        20 s request timeout, so a fresh server would fail the first person
+        for no reason. Called synchronously at startup; the port opens once
+        this returns, so "health says ok" means "ready".
+        """
+        blank = np.zeros((160, 160, 3), dtype=np.uint8)
+        self.analyze(blank)
+        centre = np.array([[60, 60], [100, 60], [80, 85], [65, 110], [95, 110]], dtype=np.float32)
+        self.embed(blank, centre)
+        self.pad_score(blank, np.array([40, 40, 120, 120], dtype=np.float32))
+
     def loaded_models(self) -> dict[str, bool]:
         return {
             "mediapipe_landmarker": self._task_path.is_file(),

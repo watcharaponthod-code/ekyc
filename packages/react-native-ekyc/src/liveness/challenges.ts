@@ -32,7 +32,7 @@ export type TurnOptions = {
 }
 
 export type CloseEyesOptions = {
-  /** Both eyes must be below this open-probability. */
+  /** Mean open-probability of the two eyes must be at or below this. */
   maxEyeOpen?: number
 }
 
@@ -60,22 +60,30 @@ export class CenterChallenge extends Challenge {
 }
 
 /**
- * Close both eyes and hold.
+ * Blink (or close the eyes).
  *
- * Deliberately not "blink": a blink lasts ~150 ms and `takePhoto()` has
- * 150–400 ms of shutter lag, so a blink would be missed systematically. A held
- * eyes-closed pose is also stronger evidence — a printed photo cannot do it.
+ * An event, not a hold: one frame with the eyes shut completes the step, so a
+ * natural ~150 ms blink is enough. That is only sound because stills are
+ * snapshots of the preview surface — grabbed the instant the closed frame is
+ * seen, with no shutter lag — and because the *server* re-checks eye
+ * closure on that frame against the neutral one. The device merely picks the
+ * moment; it proves nothing.
  */
 export class CloseEyesChallenge extends Challenge {
   readonly name: ChallengeName = 'closeEyes'
+  readonly holdMs = 0
 
   constructor(private readonly options: CloseEyesOptions = {}) {
     super()
   }
 
   isSatisfied(signal: FaceSignal): boolean {
-    const { maxEyeOpen = 0.4 } = this.options
-    return signal.leftEye <= maxEyeOpen && signal.rightEye <= maxEyeOpen
+    // ML Kit's open-probability lags a fast blink and the two eyes rarely
+    // bottom out on the same frame, so require the *average* below the
+    // threshold rather than both eyes independently. 0.5 accepts a real blink;
+    // an open eye reads 0.9+.
+    const { maxEyeOpen = 0.5 } = this.options
+    return (signal.leftEye + signal.rightEye) / 2 <= maxEyeOpen
   }
 }
 

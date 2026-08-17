@@ -56,9 +56,10 @@ v2 follows what every serious vendor does (FaceTec, AWS Rekognition Face Livenes
 ┌─── PHONE (React Native module) ──────────────┐      ┌─── SERVER (FastAPI) ────────────────┐
 │ 1. POST /sessions ───────────────────────────┼─────▶│ issue sessionId + nonce +           │
 │                                              │◀─────┼─ challenge ORDER (server-random)    │
-│ 2. MLKit @30fps → FaceSignal → LivenessSession│      │                                     │
-│    guide user: center → hold pose per step   │      │                                     │
-│ 3. takePhoto() mid-hold for each step        │      │                                     │
+│ 2. MLKit (camera asks 60 fps) → FaceSignal → │      │                                     │
+│    LivenessSession: center → per-step pose   │      │                                     │
+│ 3. takeSnapshot() of the preview the instant │      │                                     │
+│    a pose is confirmed (no shutter lag)      │      │                                     │
 │ 4. quality gate, then                        │      │                                     │
 │    POST /sessions/{id}/submit (4 JPEGs) ─────┼─────▶│ decode → SCRFD detect → quality      │
 │                                              │      │ → MiniFASNet PAD (every frame)      │
@@ -69,15 +70,18 @@ v2 follows what every serious vendor does (FaceTec, AWS Rekognition Face Livenes
 └──────────────────────────────────────────────┘      └─────────────────────────────────────┘
 ```
 
-### Why every challenge is a **hold**, not a **blink**
-`takePhoto()` has 150–400 ms of shutter latency. A blink lasts ~150 ms — you would systematically miss it. So every challenge is "do X and **hold** for 700 ms", and the shutter fires ~350 ms into the hold. This makes:
+### Capture: preview snapshots, short holds, a real blink (v3 — measured on device)
+The first design used `takePhoto()` and 700 ms holds because a photo capture lands 150–400 ms after the request. On a real phone that was the wrong trade: captures took 470–770 ms each (full-sensor JPEG encode), some front cameras refuse the third stream outright ("Failed to apply the stream configuration"), and the last step's capture was still in flight when the camera was released, failing an otherwise perfect run.
 
-- capture mechanism uniform (one code path for all challenges),
-- server verification uniform (one still frame proves one pose),
-- UX better (a ring fills while you hold — the premium pattern every vendor uses),
-- "blink" becomes **"close your eyes and hold"**, which is *stronger* evidence than a blink: a printed photo cannot close its eyes, and a still frame of closed eyes is unambiguous.
+Stills are now **snapshots of the preview surface** (`takeSnapshot()`, TextureView), taken the instant a pose is confirmed: no shutter lag, no extra stream, a preview-sized JPEG in tens of milliseconds. Preview resolution is far above what the server's models consume (ArcFace 112 px, MiniFASNet 80 px), so nothing is lost. With no lag to hide:
 
-This removes the need for frame processors/worklets entirely. The module contains **zero worklet code**.
+- **Turns** are held for **120 ms** (2 detections at the ~15–20 fps ML Kit fast mode actually delivers at 720p on a mid-range phone; more at 30–60) — enough to reject one bad frame, short enough that a natural turn passes at the speed people make it.
+- **Blink is an event**: one frame with mean eye-open probability ≤ 0.5 captures and completes the step (`Challenge.holdMs = 0`). The server still measures eye closure on that frame against the neutral one, so the device only picks the moment; it proves nothing.
+- Capture happens on the **first** confirming frame (`captureAtProgress: 0`).
+- A step cannot complete within **250 ms** of starting (`minStepMs`), mirroring the server's `step_duration_min_ms`; without it a pre-emptive turn or a stray blink would pass on the phone and be rejected as implausible on the server.
+- The camera stays active through `uploading` so the final snapshot always lands.
+
+The module still contains **zero worklet code**; ML Kit runs on the JS-thread callback path.
 
 ---
 
@@ -98,7 +102,7 @@ All endpoints under `/v1`. `Content-Type: application/json` unless stated.
   "nonce": "b64url-32B",
   "challenges": ["closeEyes", "turnRight", "turnLeft"],   // SERVER-RANDOMISED ORDER
   "expiresAt": "2026-08-17T10:12:00Z",
-  "policy": { "holdMs": 700, "perStepTimeoutMs": 12000, "totalTimeoutMs": 60000 } }
+  "policy": { "holdMs": 120, "perStepTimeoutMs": 12000, "totalTimeoutMs": 60000 } }
 ```
 The server always prepends the implicit `center` step client-side; it is a framing gate, and its captured frame is the `neutral` evidence frame.
 
@@ -336,7 +340,7 @@ packages/react-native-ekyc/src/
 ```
                     ┌───────────── signal lost > 1 s / multiple faces / timeout ──────────┐
                     ▼                                                                      │
-idle ─start()→ step[i] ──satisfied for holdMs──→ CAPTURE(step[i]) ──→ step[i+1] … → uploading → passed
+idle ─start()→ step[i] ──satisfied for holdMs (0 = one frame)──→ CAPTURE(step[i]) ──→ step[i+1] … → uploading → passed
                     ▲                                                                      │
                     └── predicate breaks → hold resets to 0 (progress ring rewinds) ───────┘
                                                                                         failed(reason)
@@ -430,7 +434,7 @@ Failure is explained as advice, not as an error restatement: "The photo was blur
 | Instruction change | 220 ms cross-fade |
 | Hold progress | 120 ms follow - short enough to feel attached to the pose |
 | Result badge | spring, damping 15 / stiffness 200 |
-| Step passed | medium haptic |
+| Step passed | 500 ms vibration (RN `Vibration`; expo-haptics fallback) — the phone is at arm's length, a 20 ms tick does not register |
 | Final pass / fail | success / error notification haptic |
 | Any capture | **no sound**, ever - not one surveyed SDK plays audio |
 
@@ -506,7 +510,7 @@ MLKit ships no arm64 iOS simulator slice, so all device testing is on physical h
 
 Phases 0–5 are built. Phase 5's device run and Phase 6 are the remaining gates before production; Phase 7 follows business need.
 
-**Not yet done, stated plainly:** nothing has run on a physical phone. Everything mobile is verified by type checking and unit tests over the pure logic; the camera, ML Kit signal shape, shutter latency, and the `yawSign` calibration all need a real device — that is `docs/qa-checklist.md`.
+**Device findings (Android 35 phone + Android 36 emulator), all folded back into the code:** ML Kit reports *positive* yaw for a turn to the user's left (`DEFAULT_YAW_SIGN = -1`); some front cameras reject preview + analysis + capture (→ snapshots); photo captures took 470–770 ms (→ snapshots); RN `FormData` needs `file://` on native paths or the upload dies on the device with no server trace (→ `asFileUri`); the first submit after a cold server took ~25 s, longer than the client's 20 s timeout (→ models warmed at startup, health only answers when ready). Phone diagnostics are POSTed to `/v1/client-log` so device and server lines interleave in one log (`server/scripts/tail_log.py`).
 
 ---
 
@@ -544,7 +548,7 @@ EKYC/
 | Decision | Reverse if |
 |---|---|
 | Hybrid device/server, server judges | never, for identity verification |
-| Every challenge is a *hold*; capture via `takePhoto()` | a future VisionCamera exposes low-latency frame grabbing from JS without worklets → could capture true blinks |
+| Stills are preview snapshots; turns hold 120 ms, blink is one frame | a regulator demands sensor-resolution stills → add `usePhotoOutput` back behind a flag and accept the latency |
 | Server issues the challenge order | never |
 | Convention-free `yawProxy` with opposite-sign rule | field data shows the proxy is unstable for very wide faces → move to 3-D pose from 106 landmarks + PnP |
 | ONNX + `onnxruntime` (no PyTorch/TensorFlow at inference) | need GPU batching at scale → same ONNX files, add CUDA EP |

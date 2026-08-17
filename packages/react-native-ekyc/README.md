@@ -25,7 +25,7 @@ That is the whole API surface most apps need.
 **On the phone**
 - Front camera, oval framing guide, live coaching ("move closer", "center your face")
 - Walks the user through the challenges the *server* chose, in the order the server chose
-- Captures one still per step, mid-hold, while the pose is definitely being held
+- Captures one still per step — a snapshot of the preview the instant the pose is confirmed (turns: 120 ms hold; blink: a single frame), so there is no shutter lag to hide
 - Uploads the evidence and renders the verdict
 
 **Not on the phone**

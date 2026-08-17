@@ -29,7 +29,7 @@ class CreateSessionRequest(BaseModel):
 
 
 class SessionPolicy(BaseModel):
-    holdMs: int = 250
+    holdMs: int = 120
     perStepTimeoutMs: int = 12_000
     totalTimeoutMs: int = 60_000
 

@@ -41,6 +41,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     configure_logging(settings.log_level, settings.log_format)
     init_db()
     log_event("server.start", version=settings.version, backend=settings.backend)
+    backend = get_backend()
+    warm_up = getattr(backend, "warm_up", None)
+    if warm_up is not None:
+        with timed("backend.warm_up", backend=backend.name):
+            warm_up()
     yield
 
 

@@ -37,6 +37,8 @@ import {
  * LAN address. It is editable on the home screen so you do not have to rebuild.
  */
 const DEFAULT_BASE_URL = 'http://192.168.1.177:8000'
+/** Bumped per published APK so a phone can prove which build it runs. */
+const APP_BUILD = 13
 
 type Screen =
   | { kind: 'home' }
@@ -126,7 +128,7 @@ export default function App() {
           placeholderTextColor={theme.colors.textDim}
         />
         <View style={styles.row}>
-          <Text style={styles.meta}>{health}</Text>
+          <Text style={styles.meta}>{`${health} · app b${APP_BUILD}`}</Text>
           {busy ? <ActivityIndicator color={theme.colors.accent} /> : null}
         </View>
 

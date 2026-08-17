@@ -32,10 +32,17 @@ describe('CenterChallenge', () => {
 describe('CloseEyesChallenge', () => {
   const challenge = new CloseEyesChallenge()
 
-  it('needs both eyes closed', () => {
+  it('accepts shut eyes and a mid-blink frame where one eye lags the other', () => {
     expect(challenge.isSatisfied(signal({ leftEye: 0.1, rightEye: 0.1 }))).toBe(true)
-    expect(challenge.isSatisfied(signal({ leftEye: 0.1, rightEye: 0.9 }))).toBe(false)
-    expect(challenge.isSatisfied(signal({ leftEye: 0.9, rightEye: 0.1 }))).toBe(false)
+    expect(challenge.isSatisfied(signal({ leftEye: 0.2, rightEye: 0.6 }))).toBe(true)
+  })
+
+  it('rejects one open eye and one shut (a wink is not a blink)', () => {
+    expect(challenge.isSatisfied(signal({ leftEye: 0.1, rightEye: 0.95 }))).toBe(false)
+  })
+
+  it('is an event: completes on a single frame', () => {
+    expect(challenge.holdMs).toBe(0)
   })
 
   it('rejects open eyes', () => {

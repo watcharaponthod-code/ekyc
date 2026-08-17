@@ -59,17 +59,21 @@ If `w` is wildly off, `frameWidth`/`frameHeight` from the detector are not what 
 
 ## 4. The capture flow
 
-- [ ] Each step's instruction appears, and switches to "ค้างไว้" once you are holding
-- [ ] The ring's four brackets close smoothly and seal at the end of the hold
-- [ ] Breaking the pose mid-hold rewinds the ring and the step does not complete
-- [ ] A haptic fires on each completed step
+- [ ] Each step's instruction appears; arrows point where *you* turn (left arrows = turn your left)
+- [ ] A quick natural turn (no slow sweep) passes; you should not need to hold
+- [ ] A single ordinary blink passes the "กระพริบตา" step
+- [ ] Turning back to centre before 120 ms is up rewinds the ring; the step does not complete
+- [ ] A 500 ms vibration fires on each completed step
 - [ ] **No shutter sound**, on either platform, at any point
 - [ ] The step dots fill left to right, each with a tick
-- [ ] Whole flow takes 12–20 s at a normal pace
+- [ ] Whole flow takes 4–8 s at a normal pace
 
-**Measure the shutter latency** (the one number that could break the design):
+**Read the numbers, don't guess them** — every line below reaches the server log (`py -3.12 server/scripts/tail_log.py`):
 
-- [ ] Time from "ring reaches halfway" to the photo landing. If it regularly exceeds ~500 ms, raise `holdMs` above 700 so the pose is still held when the shutter fires.
+- [ ] `camera config N fps` — 60 on a sensor that supports it, else 30
+- [ ] `captured <step> Nms` — snapshot + JPEG encode; expect < 150 ms
+- [ ] `submitting N frames, detector F fps` — F is real ML Kit throughput; below ~12 raise `holdMs` so a turn is still ≥ 2 detections
+- [ ] `decision pass|fail <reasons>` — the server's verdict as the phone saw it; `submit failed <code>` if it never got there
 
 ---
 

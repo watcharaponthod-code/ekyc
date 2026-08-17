@@ -47,6 +47,19 @@ describe('buildEvidenceParts', () => {
       type: 'image/jpeg',
     })
   })
+
+  it('gives bare native paths a file:// scheme, and leaves real URIs alone', () => {
+    const bare: EvidenceBundle = {
+      ...bundle,
+      frames: [
+        { key: 'neutral', uri: '/data/user/0/app/cache/n.jpg' },
+        { key: 'turnLeft', uri: 'content://media/1' },
+      ],
+    }
+    const [, neutral, turn] = buildEvidenceParts(bare)
+    expect((neutral!.value as { uri: string }).uri).toBe('file:///data/user/0/app/cache/n.jpg')
+    expect((turn!.value as { uri: string }).uri).toBe('content://media/1')
+  })
 })
 
 describe('EKYCClient', () => {
