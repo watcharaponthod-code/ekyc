@@ -17,6 +17,9 @@ type HapticsModule = {
   NotificationFeedbackType: { Success: unknown; Warning: unknown; Error: unknown }
 }
 
+/** How long a passed step buzzes for. Product decision: half a second. */
+export const STEP_VIBRATION_MS = 500
+
 let loaded: HapticsModule | null | undefined
 
 function load(): HapticsModule | null {
@@ -36,8 +39,24 @@ function safely(run: (module: HapticsModule) => Promise<void>): void {
   void run(module).catch(() => {})
 }
 
-/** One step passed. */
+/**
+ * One step passed: a solid 500 ms buzz.
+ *
+ * Longer than the usual "tick" on purpose — the phone is held at arm's length
+ * with the user looking at the camera, not the screen, and a 20 ms impact
+ * does not register there. Uses React Native's own Vibration API (a duration,
+ * not a fixed pattern) so it works without expo-haptics; VIBRATE is already
+ * in the manifest.
+ */
 export function hapticStep(): void {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { Vibration } = require('react-native') as { Vibration: { vibrate: (ms: number) => void } }
+    Vibration.vibrate(STEP_VIBRATION_MS)
+    return
+  } catch {
+    // fall through to expo-haptics if RN's Vibration is unavailable
+  }
   safely((h) => h.impactAsync(h.ImpactFeedbackStyle.Medium))
 }
 
