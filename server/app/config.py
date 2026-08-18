@@ -57,6 +57,13 @@ class Thresholds(BaseSettings):
     #: p10 0.131, so the floor has to stay under 0.13 or narrow-eyed people
     #: would clear it with their eyes open. Truly shut lids score below 0.08.
     ear_closed_max: float = 0.12
+    # --- active-flash liveness ----------------------------------------------
+    #: Min correlation between the commanded screen-flash colours and the colour
+    #: the face actually reflected. Synthetic separation is wide (real ~0.99,
+    #: photo/replay ~0.15-0.23; see test_flash.py), so 0.5 sits in the empty
+    #: gap. Only enforced when a session issued a flash plan.
+    flash_min: float = 0.5
+
     #: `enforce` makes the closed-eyes check a hard rule; `advisory` measures
     #: and logs it without failing on it alone. Enforced by default now that
     #: the metric is a real eye-aspect-ratio from MediaPipe eye contours rather

@@ -271,3 +271,50 @@ class TestIdentityConsistency:
         data = good_case(["turnLeft", "turnRight"])
         data.facts["turnRight"] = facts("turnRight", yaw=30.0, embedding=BOB)
         assert decide(data, TH).scores["identityConsistency"] == pytest.approx(0.0, abs=1e-6)
+
+
+# --- active-flash liveness (server-issued random colour sequence) -----------
+from app.flash import FLASH_PALETTE  # noqa: E402
+
+FLASH_CMD = [FLASH_PALETTE[k] for k in ("red", "green", "blue", "white")]
+
+
+def _reflected(cmd):
+    """Mean face colour a real face would show under this flash colour."""
+    amb, alb, k = np.array([0.2, 0.18, 0.16]), np.array([0.9, 0.6, 0.5]), 0.35
+    return tuple(np.clip(amb + alb * k * np.asarray(cmd), 0.0, 1.0))
+
+
+def with_flash(data: DecisionInput, observed) -> DecisionInput:
+    for i, rgb in enumerate(observed):
+        data.facts[f"flash_{i}"] = facts(f"flash_{i}", face_rgb=tuple(float(v) for v in rgb))
+    data.flash_commanded = FLASH_CMD
+    return data
+
+
+class TestActiveFlash:
+    def test_a_face_that_reflects_the_flash_passes(self):
+        out = decide(with_flash(good_case(), [_reflected(c) for c in FLASH_CMD]), TH)
+        assert out.passed, out.reasons
+        assert out.scores["flash"] > TH.flash_min
+
+    def test_a_photo_that_holds_one_colour_is_flagged_spoof(self):
+        photo = [(0.5, 0.4, 0.35)] * len(FLASH_CMD)
+        out = decide(with_flash(good_case(), photo), TH)
+        assert "FLASH_SPOOF" in out.reasons
+        assert out.scores["flash"] < TH.flash_min
+
+    def test_a_replay_of_a_different_sequence_is_flagged_spoof(self):
+        other = [FLASH_PALETTE[k] for k in ("blue", "white", "red", "green")]
+        out = decide(with_flash(good_case(), [_reflected(c) for c in other]), TH)
+        assert "FLASH_SPOOF" in out.reasons
+
+    def test_a_missing_flash_frame_is_caught(self):
+        data = with_flash(good_case(), [_reflected(c) for c in FLASH_CMD])
+        del data.facts["flash_2"]
+        assert "FLASH_FRAME_MISSING" in decide(data, TH).reasons
+
+    def test_sessions_without_a_flash_plan_are_untouched(self):
+        out = decide(good_case(), TH)  # flash_commanded defaults empty
+        assert out.passed
+        assert "flash" not in out.scores

@@ -60,6 +60,8 @@ class FrameFacts:
     embedding: np.ndarray = field(default_factory=lambda: np.zeros(512, dtype=np.float32))
     #: Optional second opinion from MediaPipe blendshapes.
     blendshapes: dict[str, float] = field(default_factory=dict)
+    #: Mean face colour, 0..1 RGB — read by active-flash liveness only.
+    face_rgb: tuple[float, float, float] = (0.0, 0.0, 0.0)
 
 
 @runtime_checkable

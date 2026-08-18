@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from itertools import combinations
 
 from .config import Thresholds
+from .flash import flash_liveness_score
 from .ml.backend import FrameFacts
 from .ml.geometry import cosine
 from .schemas import EvidenceManifest
@@ -34,8 +35,16 @@ class DecisionInput:
     #: Challenges the server issued, in order, excluding the implicit `center`.
     issued_challenges: list[str]
     manifest: EvidenceManifest
-    #: Measurements keyed by frame key (`neutral` plus one per challenge).
+    #: Measurements keyed by frame key (`neutral` plus one per challenge, and
+    #: `flash_0..flash_{n-1}` when a flash plan was issued).
     facts: dict[str, FrameFacts]
+    #: The screen-flash colours the server commanded, in order (0..1 RGB). Empty
+    #: when this session issued no active-flash challenge.
+    flash_commanded: list[tuple[float, float, float]] = field(default_factory=list)
+
+
+def flash_frame_keys(n: int) -> list[str]:
+    return [f"flash_{i}" for i in range(n)]
 
 
 @dataclass(slots=True)
@@ -83,6 +92,8 @@ def decide(data: DecisionInput, th: Thresholds) -> DecisionOutput:
     out.scores["identityConsistency"] = round(consistency, 4)
     if consistency < th.consistency_min:
         out.reasons.append("IDENTITY_INCONSISTENT")
+
+    out.reasons.extend(_check_flash(data, th, out.scores))
 
     return out
 
@@ -200,6 +211,25 @@ def _check_pose_and_eyes(
             reasons.append("POSE_SAME_DIRECTION")
 
     return scores, reasons
+
+
+def _check_flash(data: DecisionInput, th: Thresholds, scores: dict[str, object]) -> list[str]:
+    """Active-flash liveness: did the face reflect the commanded screen flash?
+
+    Skipped entirely when no flash plan was issued (``flash_commanded`` empty),
+    so it never affects sessions that predate the feature. A real face tracks
+    the random colour sequence; a photo, a replay of a different sequence, or an
+    injected stream does not.
+    """
+    if not data.flash_commanded:
+        return []
+    keys = flash_frame_keys(len(data.flash_commanded))
+    if any(k not in data.facts for k in keys):
+        return ["FLASH_FRAME_MISSING"]
+    observed = [data.facts[k].face_rgb for k in keys]
+    score = flash_liveness_score(data.flash_commanded, observed)
+    scores["flash"] = round(score, 4)
+    return ["FLASH_SPOOF"] if score < th.flash_min else []
 
 
 def _openness_ratio(closed: float, neutral: float) -> float:

@@ -140,6 +140,21 @@ def brightness(image_bgr: np.ndarray, bbox: np.ndarray) -> float:
     return float(gray.mean()) / 255.0
 
 
+def mean_face_color(image_bgr: np.ndarray, bbox: np.ndarray) -> tuple[float, float, float]:
+    """Mean colour of the face region as linear-ish RGB, 0..1.
+
+    Used by active-flash liveness: under a coloured screen flash a real face's
+    mean colour shifts toward the flash, a flat photo's does not. RGB order
+    (the pipeline is BGR internally) so it lines up with the commanded flash
+    colours in `flash.py`.
+    """
+    face = crop_bbox(image_bgr, bbox)
+    if face.size == 0:
+        return (0.0, 0.0, 0.0)
+    b, g, r = (float(face[:, :, c].mean()) / 255.0 for c in range(3))
+    return (r, g, b)
+
+
 def face_ratio(image_bgr: np.ndarray, bbox: np.ndarray) -> float:
     width = image_bgr.shape[1]
     if width == 0:

@@ -19,10 +19,10 @@ import cv2
 import numpy as np
 
 from ..config import Thresholds
-from ..decision import DecisionInput, DecisionOutput, decide, required_frame_keys
+from ..decision import DecisionInput, DecisionOutput, decide, flash_frame_keys, required_frame_keys
 from ..logging_config import timed
 from ..ml.backend import FaceBackend, FrameFacts
-from ..ml.geometry import brightness, face_ratio, sharpness
+from ..ml.geometry import brightness, face_ratio, mean_face_color, sharpness
 from ..schemas import EvidenceManifest
 
 log = logging.getLogger("ekyc.verification")
@@ -87,6 +87,7 @@ def measure(backend: FaceBackend, key: str, image_bgr: np.ndarray) -> FrameFacts
         brightness=brightness(image_bgr, face.bbox),
         face_ratio=face_ratio(image_bgr, face.bbox),
         embedding=backend.embed(image_bgr, face.kps),
+        face_rgb=mean_face_color(image_bgr, face.bbox),
     )
 
 
@@ -122,6 +123,7 @@ def _measure_single_pass(backend: FaceBackend, analyze, key: str, image_bgr: np.
         face_ratio=face_ratio(image_bgr, face.bbox),
         embedding=embedding,
         blendshapes=dict(face.blendshapes),
+        face_rgb=mean_face_color(image_bgr, face.bbox),
     )
     log.debug(
         "frame measured",
@@ -146,12 +148,14 @@ def verify_evidence(
     manifest: EvidenceManifest,
     frames: dict[str, bytes],
     thresholds: Thresholds,
+    flash_commanded: list[tuple[float, float, float]] | None = None,
 ) -> tuple[DecisionOutput, dict[str, FrameFacts], dict[str, str]]:
     """Decode, measure, decide. Returns the decision, the facts and frame hashes."""
     hashes = {key: hashlib.sha256(raw).hexdigest() for key, raw in frames.items()}
+    flash_commanded = flash_commanded or []
 
     facts: dict[str, FrameFacts] = {}
-    for key in required_frame_keys(issued_challenges):
+    for key in [*required_frame_keys(issued_challenges), *flash_frame_keys(len(flash_commanded))]:
         raw = frames.get(key)
         if raw is None:
             continue
@@ -163,7 +167,9 @@ def verify_evidence(
         facts[key] = measure(backend, key, image)
 
     with timed("decide", frames=len(facts)) as span:
-        output = decide(DecisionInput(issued_challenges, manifest, facts), thresholds)
+        output = decide(
+            DecisionInput(issued_challenges, manifest, facts, flash_commanded), thresholds
+        )
         span["decision"] = "pass" if output.passed else "fail"
         span["reasons"] = ",".join(output.reasons) or "-"
 

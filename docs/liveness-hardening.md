@@ -22,8 +22,14 @@ hardening remains.
   commanded flash colours vs observed face colour per channel. Synthetic test
   separates real (skin reflects) from photo/replay/wrong-sequence spoof.
 
+- **2 (active-flash decision gate):** `FrameFacts.face_rgb` + `geometry.mean_face_color`
+  + `decision._check_flash` (FLASH_SPOOF/FLASH_FRAME_MISSING) + `config.flash_min`
+  + `verify_evidence(flash_commanded=…)`. 5 decision tests; whole fast suite 66 green.
+  Flash gate skipped unless a plan was issued → zero effect on existing sessions.
+
 ## Next
-- 2: wire flash into session plan → manifest → `decision.py` gate; RN flash overlay.
+- 3: session issuance (random flash plan → CreatedSession) + API plumbing (flash_N
+  frames in /submit) + RN flash overlay that cycles colours and tags snapshots.
 - 3: landmark planarity score from `FrameFacts` (needs landmark z in facts).
 - 4: replay (frame hash dup / low inter-frame diff) + require attestation when configured.
 - 5+: adversarial threshold tuning, end-to-end tests, tighten.
