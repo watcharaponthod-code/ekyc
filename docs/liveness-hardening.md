@@ -12,9 +12,9 @@ hardening remains.
 |---|-------|--------|-------|
 | 0 | Recognition (ArcFace) | ✅ shipped | identity embedding |
 | 1 | Passive PAD (MiniFASNet 2D) | ✅ shipped | weak end; upgrade path = FLIP/CDCN |
-| 2 | **Active-flash liveness** | 🔨 building | screen flashes random colours; real skin tracks them. iProov/AWS/FaceTec technique. No depth HW needed. |
-| 3 | **Depth/3D (landmark planarity)** | ⬜ | flat-photo detector from MediaPipe 478 z; honest: not a silicone-mask detector |
-| 4 | **Injection/deepfake defence** | ⬜ | replay/frame-dup detection + attestation enforcement + flash-binding |
+| 2 | **Active-flash liveness** | ✅ built (server+device); device runtime pending build | screen flashes random colours; real skin tracks them. iProov/AWS/FaceTec technique. |
+| 3 | **Depth/3D (landmark planarity)** | ✅ built (advisory, empirically weak) | flat/degenerate-input cue only; not a photo/mask detector |
+| 4 | **Injection/deepfake defence** | ✅ built | frame-dup + attestation enforcement + flash-binding |
 | 5 | Server authority / nonce / delete | ✅ shipped | |
 
 ## Iteration log
@@ -68,13 +68,3 @@ hardening remains.
   motion between frames); tune FLASH_MIN; add edge-case tests.
 - 9: update spec + architecture artifact with the new layers (team handoff).
 - 10: build APK with EKYC_FLASH_FRAMES on, emulator/device smoke.
-- 7: RN flash overlay (cycle colours, tag snapshots flash_N) — needs a device build.
-- 8+: adversarial threshold tuning, end-to-end with real models, tighten.
-
-## Handoff decision list (for the dev team) — delivered to user this turn
-Top-10 decision table given in chat: architecture(hybrid), PAD(MiniFASNet→FLIP),
-active-flash(building), recognition(ArcFace), DB(SQLite→Postgres), 1:N(pgvector),
-injection(attestation), deploy(Docker→Railway), cert(iBeta L1→L2), handoff(npm module).
-- 3: landmark planarity score from `FrameFacts` (needs landmark z in facts).
-- 4: replay (frame hash dup / low inter-frame diff) + require attestation when configured.
-- 5+: adversarial threshold tuning, end-to-end tests, tighten.
