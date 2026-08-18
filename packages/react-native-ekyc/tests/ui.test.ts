@@ -114,7 +114,7 @@ describe('copy quality', () => {
       ['multipleFaces', 'noFace', 'offCentre', 'tooClose', 'tooFar'].sort(),
     )
     expect(Object.keys(dict.challenge).sort()).toEqual(
-      ['center', 'closeEyes', 'smile', 'turnLeft', 'turnRight'].sort(),
+      ['center', 'closeEyes', 'nod', 'openMouth', 'smile', 'turnLeft', 'turnRight'].sort(),
     )
   })
 
@@ -135,7 +135,7 @@ describe('explainReasons', () => {
   })
 
   it('explains the new hardening reason codes in both languages', () => {
-    for (const code of ['FLASH_SPOOF', 'FLAT_FACE', 'FRAMES_DUPLICATE', 'ATTESTATION_MISSING']) {
+    for (const code of ['FLASH_SPOOF', 'FLAT_FACE', 'FRAMES_DUPLICATE', 'ATTESTATION_MISSING', 'MOUTH_NOT_OPEN', 'SMILE_ABSENT', 'EXPRESSION_UNVERIFIABLE', 'PULSE_ABSENT', 'PULSE_FRAME_MISSING']) {
       expect(explainReasons('en', [code])[0]).toBeTruthy()
       expect(explainReasons('th', [code])[0]).toBeTruthy()
       // mapped, not passed through as the raw code

@@ -56,6 +56,8 @@ export {
   CenterChallenge,
   CloseEyesChallenge,
   DEFAULT_YAW_SIGN,
+  NodChallenge,
+  OpenMouthChallenge,
   SmileChallenge,
   TurnLeftChallenge,
   TurnRightChallenge,
@@ -65,12 +67,17 @@ export type {
   CenterOptions,
   ChallengeTuning,
   CloseEyesOptions,
+  NodOptions,
+  OpenMouthOptions,
   SmileOptions,
   TurnOptions,
 } from './liveness/challenges'
+export { mouthOpenness } from './liveness/mouth'
+export type { MouthGeometry } from './liveness/mouth'
 
 export { DEFAULT_SESSION_OPTIONS, EKYCError } from './types'
 export type {
+  Attestation,
   ChallengeName,
   CreatedSession,
   Decision,

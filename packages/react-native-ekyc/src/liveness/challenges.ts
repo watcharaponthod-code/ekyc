@@ -40,6 +40,16 @@ export type SmileOptions = {
   minSmile?: number
 }
 
+export type NodOptions = {
+  /** How far the head must pitch (degrees) from level, either direction. */
+  minPitch?: number
+}
+
+export type OpenMouthOptions = {
+  /** `FaceSignal.mouthOpen` must reach this. Contour gap ratio: 0.3 is a clear open mouth. */
+  minMouthOpen?: number
+}
+
 /**
  * Face the camera straight on.
  *
@@ -126,11 +136,54 @@ export class SmileChallenge extends Challenge {
   }
 }
 
+/**
+ * Open the mouth.
+ *
+ * The rigid-mask counter-measure: a 3-D-printed, resin or latex mask cannot
+ * open its jaw, and a flexible silicone mask opens far less than the wearer's.
+ * The phone only picks the moment; the server verifies `jawOpen` against the
+ * neutral frame from MediaPipe blendshapes.
+ */
+export class OpenMouthChallenge extends Challenge {
+  readonly name: ChallengeName = 'openMouth'
+
+  constructor(private readonly options: OpenMouthOptions = {}) {
+    super()
+  }
+
+  isSatisfied(signal: FaceSignal): boolean {
+    const { minMouthOpen = 0.3 } = this.options
+    return signal.mouthOpen >= minMouthOpen
+  }
+}
+
+/**
+ * Nod: pitch the head clearly down (or up).
+ *
+ * Direction-free on purpose, like the turns: ML Kit's pitch sign differs
+ * between devices, and what matters for liveness is that the head *moved*
+ * on a second axis. Used by the local-only flow; the server never issues it.
+ */
+export class NodChallenge extends Challenge {
+  readonly name: ChallengeName = 'nod'
+
+  constructor(private readonly options: NodOptions = {}) {
+    super()
+  }
+
+  isSatisfied(signal: FaceSignal): boolean {
+    const { minPitch = 15 } = this.options
+    return Math.abs(signal.pitch) >= minPitch
+  }
+}
+
 export type ChallengeTuning = {
   center?: CenterOptions
   closeEyes?: CloseEyesOptions
   turn?: TurnOptions
   smile?: SmileOptions
+  openMouth?: OpenMouthOptions
+  nod?: NodOptions
 }
 
 /**
@@ -159,6 +212,10 @@ function createChallenge(name: ChallengeName, tuning: ChallengeTuning): Challeng
       return new TurnRightChallenge(tuning.turn)
     case 'smile':
       return new SmileChallenge(tuning.smile)
+    case 'openMouth':
+      return new OpenMouthChallenge(tuning.openMouth)
+    case 'nod':
+      return new NodChallenge(tuning.nod)
     case 'center':
       return new CenterChallenge(tuning.center)
   }

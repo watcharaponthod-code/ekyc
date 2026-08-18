@@ -24,6 +24,7 @@ type Strings = {
   holdOn: string
   uploading: string
   flashHold: string
+  pulseHold: string
   intro: { title: string; body: string; steps: string[]; start: string; consent: string }
   result: {
     successTitle: string
@@ -54,17 +55,20 @@ const th: Strings = {
     turnLeft: 'หันหน้าไปทางซ้าย',
     turnRight: 'หันหน้าไปทางขวา',
     smile: 'ยิ้มค้างไว้',
+    openMouth: 'อ้าปากกว้างๆ',
+    nod: 'พยักหน้าลงช้าๆ',
   },
   holdOn: 'ค้างไว้',
   uploading: 'กำลังตรวจสอบ…',
   flashHold: 'มองที่หน้าจอ ค้างไว้สักครู่',
+  pulseHold: 'อยู่นิ่งๆ มองกล้อง สักครู่',
   intro: {
     title: 'ยืนยันว่าเป็นคุณ',
     body: 'ใช้เวลาไม่กี่วินาที ทำตามคำสั่งบนหน้าจอทีละขั้น',
     steps: [
       'อยู่ในที่ที่มีแสงพอ และถอดแว่นกันแดด',
       'จัดใบหน้าให้อยู่ในกรอบวงรี',
-      'ทำตามคำสั่ง: หันซ้าย หันขวา กระพริบตา',
+      'ทำตามคำสั่ง: หันซ้าย หันขวา อ้าปาก กระพริบตา',
     ],
     start: 'เริ่มสแกน',
     consent: 'ภาพใบหน้าจะถูกส่งไปตรวจสอบและลบทิ้งทันทีหลังตรวจเสร็จ ระบบเก็บเฉพาะข้อมูลเชิงตัวเลขที่ย้อนกลับเป็นภาพไม่ได้',
@@ -81,6 +85,11 @@ const th: Strings = {
     PAD_LOW: 'ระบบตรวจพบว่าอาจเป็นภาพถ่ายหรือภาพจากหน้าจอ กรุณาสแกนจากใบหน้าจริง',
     FLASH_SPOOF: 'แสงสะท้อนบนใบหน้าไม่ตรงกับสีที่จอกะพริบ อาจเป็นภาพถ่ายหรือวิดีโอ กรุณาสแกนจากใบหน้าจริง',
     FLAT_FACE: 'ตรวจพบว่าอาจเป็นภาพแบน กรุณาสแกนจากใบหน้าจริง',
+    MOUTH_NOT_OPEN: 'ยังตรวจไม่พบการอ้าปาก อ้าปากให้กว้างขึ้นแล้วค้างไว้',
+    SMILE_ABSENT: 'ยังตรวจไม่พบรอยยิ้ม ยิ้มให้ชัดขึ้นแล้วค้างไว้',
+    EXPRESSION_UNVERIFIABLE: 'ระบบวัดการแสดงสีหน้าไม่ได้ กรุณาสแกนใหม่ในที่ที่มีแสงพอ',
+    PULSE_ABSENT: 'ตรวจไม่พบสัญญาณชีพจากผิวหน้า อยู่นิ่งๆ ในที่มีแสงพอ แล้วสแกนจากใบหน้าจริง',
+    PULSE_FRAME_MISSING: 'ภาพช่วงอยู่นิ่งไม่ครบ ถือเครื่องให้นิ่งจนจบ แล้วลองใหม่',
     FRAMES_DUPLICATE: 'ตรวจพบภาพซ้ำผิดปกติ กรุณาสแกนใหม่',
     ATTESTATION_MISSING: 'อุปกรณ์ไม่ผ่านการตรวจสอบความปลอดภัย กรุณาใช้แอปทางการบนเครื่องที่ไม่ได้ดัดแปลง',
     QUALITY_SHARPNESS: 'ภาพเบลอ ถือเครื่องให้นิ่งขึ้นอีกนิด',
@@ -134,17 +143,20 @@ const en: Strings = {
     turnLeft: 'Turn your head left',
     turnRight: 'Turn your head right',
     smile: 'Smile and hold',
+    openMouth: 'Open your mouth wide',
+    nod: 'Nod your head down',
   },
   holdOn: 'Hold steady',
   uploading: 'Checking…',
   flashHold: 'Look at the screen, hold still',
+  pulseHold: 'Hold still and look at the camera',
   intro: {
     title: "Let's check it's you",
     body: 'Takes a few seconds. Follow one instruction at a time.',
     steps: [
       'Find even light and take off sunglasses',
       'Fit your face inside the oval',
-      'Follow each prompt: turn left, turn right, blink',
+      'Follow each prompt: turn left, turn right, open your mouth, blink',
     ],
     start: 'Start scan',
     consent:
@@ -162,6 +174,11 @@ const en: Strings = {
     PAD_LOW: 'That looked like a photo or a screen. Please scan your real face.',
     FLASH_SPOOF: "The light on your face didn't match the screen flash. Please scan your real face.",
     FLAT_FACE: 'That looked flat. Please scan your real face.',
+    MOUTH_NOT_OPEN: "We couldn't see your mouth open. Open wider and hold.",
+    SMILE_ABSENT: "We couldn't see a smile. Smile more clearly and hold.",
+    EXPRESSION_UNVERIFIABLE: "We couldn't measure your expression. Try again in better light.",
+    PULSE_ABSENT: "We couldn't detect a pulse in your skin. Hold still in good light and scan your real face.",
+    PULSE_FRAME_MISSING: 'The hold-still phase was cut short. Keep the phone steady to the end and retry.',
     FRAMES_DUPLICATE: 'We saw repeated frames. Please scan again.',
     ATTESTATION_MISSING: 'This device failed the security check. Use the official app on an unmodified device.',
     QUALITY_SHARPNESS: 'The photo was blurry. Hold the phone a little steadier.',

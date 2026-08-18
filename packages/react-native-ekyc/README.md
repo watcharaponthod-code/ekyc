@@ -5,7 +5,7 @@ Liveness capture for React Native. The phone runs the interaction; a server make
 ```tsx
 import { EKYCCamera, EKYCClient } from '@ekyc/react-native-ekyc'
 
-const client = new EKYCClient({ baseUrl: 'https://ekyc.example.com' })
+const client = new EKYCClient({ baseUrl: 'https://ekyc.example.com', apiKey: process.env.EKYC_API_KEY })
 
 <EKYCCamera
   client={client}
@@ -104,6 +104,17 @@ ML Kit ships no arm64 iOS simulator slice, so **test on a physical device**.
 | `onCancel` | `() => void` | back button and the result screen's dismiss |
 | `onProgress` | `(s: LivenessState) => void` | for analytics |
 | `debug` | `boolean` | overlays live yaw/pitch/eye numbers |
+| `attestation` | `() => Promise<Attestation \| undefined>` | device-integrity provider (Play Integrity / App Attest via your own native module); its token rides in the manifest and the server can require it |
+| `evaluationLabel` | `string` | PAD-evaluation tag (`bona_fide`, `mask_silicone`, …) for a retention-enabled evaluation server. Never set in production |
+
+### What the flow does now
+
+`center` → server-issued challenges (always including **`openMouth`** on the
+full tier — the challenge a rigid mask cannot answer — plus two of turn-left /
+turn-right / blink / smile in random order) → optional **pulse burst** (hold
+still ~7–8 s while the face is snapshotted; the server reads a heartbeat out
+of the skin colour — a silicone mask has none) → optional **screen flash** →
+upload. Both optional phases are switched on by the server, not the app.
 
 `onResult` is not an error channel. A failed liveness check is a normal outcome and arrives as `{ decision: 'fail', reasons: [...] }`. Only camera, network and permission problems throw, as `EKYCError` with a `code`.
 

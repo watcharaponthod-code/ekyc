@@ -118,7 +118,7 @@ export function useWebcamFace(enabled: boolean): WebcamFace {
                 ...s,
                 mesh: [],
                 signal: {
-                  count: 0, yaw: 0, pitch: 0, roll: 0, leftEye: 1, rightEye: 1, smile: 0,
+                  count: 0, yaw: 0, pitch: 0, roll: 0, leftEye: 1, rightEye: 1, smile: 0, mouthOpen: 0,
                   box: { x: 0, y: 0, w: 0, h: 0 }, t: Date.now(),
                 },
               }))
@@ -143,6 +143,8 @@ export function useWebcamFace(enabled: boolean): WebcamFace {
               const shapes = result.faceBlendshapes?.[best]?.categories ?? []
               const bs = (name: string) => shapes.find((c) => c.categoryName === name)?.score ?? 0
               const smile = (bs('mouthSmileLeft') + bs('mouthSmileRight')) / 2
+              // jawOpen is what the server measures too, so the preview matches it 1:1.
+              const mouthOpen = bs('jawOpen')
 
               setState((s) => ({
                 ...s,
@@ -160,6 +162,7 @@ export function useWebcamFace(enabled: boolean): WebcamFace {
                   leftEye: openProbability(ear(pts, LEFT_EYE)),
                   rightEye: openProbability(ear(pts, RIGHT_EYE)),
                   smile,
+                  mouthOpen,
                   box,
                   t: Date.now(),
                 },

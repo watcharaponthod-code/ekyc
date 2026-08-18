@@ -20,6 +20,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
+import * as SecureStore from 'expo-secure-store'
 import {
   EKYCCamera,
   EKYCClient,
@@ -36,9 +37,16 @@ import {
  * `localhost` is the phone itself, so on a physical device use your machine's
  * LAN address. It is editable on the home screen so you do not have to rebuild.
  */
-const DEFAULT_BASE_URL = 'http://192.168.1.177:8000'
+const DEFAULT_BASE_URL = 'https://ekyc-api-production-1c11.up.railway.app'
+/**
+ * The Railway deployment above requires `X-API-Key` (`EKYC_API_KEYS`). The key
+ * is *not* in source: paste it once on the home screen — it is kept in
+ * SecureStore on the device — or set it in Railway → Variables and share it
+ * out of band.
+ */
+const DEFAULT_API_KEY = ''
 /** Bumped per published APK so a phone can prove which build it runs. */
-const APP_BUILD = 15
+const APP_BUILD = 16
 
 type Screen =
   | { kind: 'home' }
@@ -49,13 +57,17 @@ const theme = defaultTheme
 
 export default function App() {
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL)
+  const [apiKey, setApiKey] = useState(DEFAULT_API_KEY)
   const [screen, setScreen] = useState<Screen>({ kind: 'home' })
   const [people, setPeople] = useState<Person[]>([])
   const [health, setHealth] = useState<string>('…')
   const [busy, setBusy] = useState(false)
   const [name, setName] = useState('')
 
-  const client = useMemo(() => new EKYCClient({ baseUrl }), [baseUrl])
+  const client = useMemo(
+    () => new EKYCClient({ baseUrl, ...(apiKey.trim() ? { apiKey: apiKey.trim() } : {}) }),
+    [baseUrl, apiKey],
+  )
 
   const refresh = useCallback(async () => {
     setBusy(true)
@@ -74,6 +86,25 @@ export default function App() {
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  // Server URL and API key survive restarts, in the device keystore — so the
+  // key is typed once and never lives in source or in a plain preference file.
+  useEffect(() => {
+    void (async () => {
+      const [savedUrl, savedKey] = await Promise.all([
+        SecureStore.getItemAsync('ekyc.baseUrl').catch(() => null),
+        SecureStore.getItemAsync('ekyc.apiKey').catch(() => null),
+      ])
+      if (savedUrl) setBaseUrl(savedUrl)
+      if (savedKey) setApiKey(savedKey)
+    })()
+  }, [])
+  useEffect(() => {
+    void SecureStore.setItemAsync('ekyc.baseUrl', baseUrl).catch(() => {})
+  }, [baseUrl])
+  useEffect(() => {
+    void SecureStore.setItemAsync('ekyc.apiKey', apiKey).catch(() => {})
+  }, [apiKey])
 
   const handleResult = useCallback(
     (decision: Decision) => {
@@ -125,6 +156,17 @@ export default function App() {
           autoCapitalize="none"
           autoCorrect={false}
           placeholder="http://192.168.1.10:8000"
+          placeholderTextColor={theme.colors.textDim}
+        />
+        <Text style={styles.label}>API key</Text>
+        <TextInput
+          style={styles.input}
+          value={apiKey}
+          onChangeText={setApiKey}
+          autoCapitalize="none"
+          autoCorrect={false}
+          secureTextEntry
+          placeholder="X-API-Key (ว่างได้ถ้า server ไม่ได้ตั้ง)"
           placeholderTextColor={theme.colors.textDim}
         />
         <View style={styles.row}>

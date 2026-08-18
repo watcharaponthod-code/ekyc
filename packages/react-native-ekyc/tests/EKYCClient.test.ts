@@ -213,3 +213,32 @@ describe('EKYCClient', () => {
     await expect(client.health()).rejects.toBeInstanceOf(EKYCError)
   })
 })
+
+describe('EKYCClient API key', () => {
+  it('sends X-API-Key on every request when configured', async () => {
+    const fetchImpl = jest.fn(async () => jsonResponse([]))
+    const client = new EKYCClient({ baseUrl: 'https://x.test', apiKey: 'k-one', fetchImpl: fetchImpl as never })
+    await client.listPersons()
+    const [, init] = (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])
+    expect((init.headers as Record<string, string>)['X-API-Key']).toBe('k-one')
+  })
+
+  it('sends no key header when none is configured, and lets custom headers win', async () => {
+    const fetchImpl = jest.fn(async () => jsonResponse([]))
+    const client = new EKYCClient({
+      baseUrl: 'https://x.test',
+      apiKey: 'k-one',
+      headers: () => ({ 'X-API-Key': 'override' }),
+      fetchImpl: fetchImpl as never,
+    })
+    await client.listPersons()
+    const [, init] = (fetchImpl.mock.calls[0] as unknown as [string, RequestInit])
+    expect((init.headers as Record<string, string>)['X-API-Key']).toBe('override')
+
+    const bare = jest.fn(async () => jsonResponse([]))
+    await new EKYCClient({ baseUrl: 'https://x.test', fetchImpl: bare as never }).listPersons()
+    const [, init2] = (bare.mock.calls[0] as unknown as [string, RequestInit])
+    expect((init2.headers as Record<string, string>)['X-API-Key']).toBeUndefined()
+  })
+})
+

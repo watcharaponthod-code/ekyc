@@ -27,13 +27,19 @@ export type FaceSignal = {
   rightEye: number
   /** 0 = neutral, 1 = smiling. */
   smile: number
+  /**
+   * Mouth opening, 0 = shut. From ML Kit contours it is the lip gap over the
+   * mouth width (~0 shut, 0.3+ clearly open); from landmarks alone a coarser
+   * proxy. Only used to pick the capture moment — the server re-measures.
+   */
+  mouthOpen: number
   /** Bounds of the largest face, normalised to the frame. */
   box: Rect
   /** Timestamp in ms. The session derives all timing from this — it never calls Date.now(). */
   t: number
 }
 
-export type ChallengeName = 'center' | 'closeEyes' | 'turnLeft' | 'turnRight' | 'smile'
+export type ChallengeName = 'center' | 'closeEyes' | 'turnLeft' | 'turnRight' | 'smile' | 'openMouth' | 'nod'
 
 /**
  * How the user is positioned, independent of which challenge is active.
@@ -155,6 +161,8 @@ export type CreatedSession = {
   challenges: ChallengeName[]
   /** Active-flash colour names to show in order (empty/absent when off). */
   flash?: string[]
+  /** rPPG burst: capture `frames` stills of the still face over ~`durationMs`. */
+  pulse?: { frames: number; durationMs: number } | null
   expiresAt: string
   policy: SessionPolicy
 }
@@ -171,8 +179,12 @@ export type StepObservation = {
     leftEye: number
     rightEye: number
     smile: number
+    mouthOpen?: number
   }
 }
+
+/** Device-integrity evidence. Produced by the host app's attestation provider. */
+export type Attestation = { type: 'playIntegrity' | 'appAttest' | 'none'; token?: string }
 
 export type EvidenceManifest = {
   nonce: string
@@ -185,7 +197,9 @@ export type EvidenceManifest = {
     fps: number
     mirrored: boolean
   }
-  attestation?: { type: 'playIntegrity' | 'appAttest' | 'none'; token?: string }
+  attestation?: Attestation
+  /** Device timestamps (ms) of `pulse_0..pulse_{n-1}`, in key order. */
+  pulse?: { times: number[] }
 }
 
 /** One captured still, ready to upload. */

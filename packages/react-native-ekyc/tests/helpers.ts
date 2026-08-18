@@ -10,6 +10,7 @@ export function signal(overrides: Partial<FaceSignal> = {}): FaceSignal {
     leftEye: 0.95,
     rightEye: 0.95,
     smile: 0.05,
+    mouthOpen: 0.02,
     box: { x: 0.3, y: 0.3, w: 0.4, h: 0.4 },
     t: 0,
     ...overrides,

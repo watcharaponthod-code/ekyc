@@ -22,9 +22,11 @@ import {
 
 import type { EKYCClient } from '../client/EKYCClient'
 import { LivenessSession } from '../liveness/LivenessSession'
+import { mouthOpenness } from '../liveness/mouth'
 import { buildChallenges, type ChallengeTuning } from '../liveness/challenges'
 import {
   DEFAULT_SESSION_OPTIONS,
+  type Attestation,
   type ChallengeName,
   type CreatedSession,
   type Decision,
@@ -61,6 +63,20 @@ export type EKYCCameraProps = {
   onProgress?: ((state: LivenessState) => void) | undefined
   /** Shows live yaw/pitch/eye numbers — use it once to calibrate `yawSign`. */
   debug?: boolean
+  /**
+   * Device-integrity provider. Called once per session, right before upload;
+   * the token it returns travels in the manifest and the server can require
+   * it (`EKYC_REQUIRE_ATTESTATION`). Wire it to Play Integrity / App Attest
+   * through whatever native module the host app already uses — the module
+   * itself stays free of that dependency. Errors are swallowed and reported
+   * as `{ type: 'none' }`.
+   */
+  attestation?: (() => Promise<Attestation | undefined>) | undefined
+  /**
+   * PAD-evaluation label (`bona_fide`, `mask_silicone`, ...). Only meaningful
+   * against an evaluation server with retention on. Never set in production.
+   */
+  evaluationLabel?: string | undefined
 }
 
 /** Prefer 60 fps; harmless where unavailable. Module-level so its identity is stable. */
@@ -69,6 +85,11 @@ const CAMERA_CONSTRAINTS = [{ fps: 60 }]
 /** How long each flash colour is held on screen before its snapshot — enough
  * for the screen to paint and the camera to expose the lit face. */
 const FLASH_HOLD_MS = 350
+
+/** Floor between two pulse-burst snapshots. The burst wants the highest rate
+ * the device can give (rPPG resolves better at 15 fps than at 8), but a
+ * back-to-back loop would starve the face detector and the JS thread. */
+const PULSE_MIN_INTERVAL_MS = 40
 
 /** Last few diagnostic lines, kept so a phone with no cable can still show why. */
 const RECENT_LOG: string[] = []
@@ -86,6 +107,7 @@ function log(message: string, detail?: unknown): void {
 type Screen =
   | { kind: 'starting' }
   | { kind: 'capturing' }
+  | { kind: 'pulsing' }
   | { kind: 'flashing'; color: string }
   | { kind: 'result'; passed: boolean; reasons: string[] }
   | { kind: 'error'; message: string }
@@ -116,6 +138,8 @@ export function EKYCCamera({
   onCancel,
   onProgress,
   debug = false,
+  attestation,
+  evaluationLabel,
 }: EKYCCameraProps) {
   const { width, height } = useWindowDimensions()
   const device = useCameraDevice('front')
@@ -134,12 +158,16 @@ export function EKYCCamera({
   onResultRef.current = onResult
   const onProgressRef = useRef(onProgress)
   onProgressRef.current = onProgress
+  const attestationRef = useRef(attestation)
+  attestationRef.current = attestation
 
   const handleEventRef = useRef<(event: SessionEvent) => void>(() => {})
   const remote = useRef<CreatedSession | null>(null)
   const session = useRef<LivenessSession | null>(null)
   const frames = useRef<Map<string, string>>(new Map())
   const observations = useRef<StepObservation[]>([])
+  /** Device time of each pulse-burst snapshot, in key order (`pulse_0..`). */
+  const pulseTimes = useRef<number[]>([])
   const stepStartedAt = useRef(0)
   const startedAt = useRef(0)
   const latest = useRef<FaceSignal | null>(null)
@@ -210,6 +238,32 @@ export function EKYCCamera({
     }
   }, [])
 
+  /**
+   * Burst variant: grab now, encode later. Returns the grab time, or null if
+   * the grab failed (a single dropped burst frame is not fatal — the server
+   * counts what arrived). The encode promise is tracked so `submit` waits.
+   */
+  const snapshotTimed = useCallback(async (key: string): Promise<number | null> => {
+    const camera = cameraRef.current
+    if (!camera) return null
+    const t = Date.now()
+    try {
+      const image = await camera.takeSnapshot()
+      pendingCaptures.current.push(
+        image
+          .saveToTemporaryFileAsync('jpg', 85)
+          .then((path) => {
+            frames.current.set(key, path)
+          })
+          .catch((error: Error) => log('burst encode failed', `${key}: ${error.message}`)),
+      )
+      return t
+    } catch (error) {
+      log('burst grab failed', `${key}: ${(error as Error).message}`)
+      return null
+    }
+  }, [])
+
   const capture = useCallback((key: string) => {
     pendingCaptures.current.push(snapshot(key))
   }, [snapshot])
@@ -230,6 +284,15 @@ export function EKYCCamera({
     log('submitting', `${frames.current.size} frames, detector ${fps} fps`)
 
     const evidence: EvidenceFrame[] = [...frames.current].map(([key, uri]) => ({ key, uri }))
+    let attested: Attestation | undefined
+    if (attestationRef.current) {
+      try {
+        attested = await attestationRef.current()
+      } catch (error) {
+        log('attestation failed', error)
+        attested = { type: 'none' }
+      }
+    }
     try {
       const decision = await client.submit(created.sessionId, {
         manifest: {
@@ -238,6 +301,8 @@ export function EKYCCamera({
           finishedAt: Date.now(),
           steps: observations.current,
           capture: { frameWidth: width, frameHeight: height, fps, mirrored: true },
+          ...(attested ? { attestation: attested } : {}),
+          ...(pulseTimes.current.length > 0 ? { pulse: { times: pulseTimes.current } } : {}),
         },
         frames: evidence,
       })
@@ -271,11 +336,44 @@ export function EKYCCamera({
     await submit()
   }, [snapshot, submit])
 
+  // The rPPG pulse burst (when the session issued one): the user holds still
+  // and looks at the camera while we snapshot the face as fast as the device
+  // allows for ~durationMs — capped at the requested frame count. The server
+  // reads the heartbeat out of the skin colour across the burst; a silicone
+  // mask has none. Runs before the flash so the face is under ambient light,
+  // then hands over to the flash phase (or straight to submit).
+  const runPulse = useCallback(async () => {
+    const plan = remote.current?.pulse
+    pulseTimes.current = []
+    if (plan && plan.frames > 0) {
+      setScreen({ kind: 'pulsing' })
+      const started = Date.now()
+      let index = 0
+      while (index < plan.frames && Date.now() - started < plan.durationMs) {
+        const tick = Date.now()
+        const t = await snapshotTimed(`pulse_${index}`)
+        if (t !== null) {
+          pulseTimes.current.push(t)
+          index += 1
+        }
+        const elapsed = Date.now() - tick
+        if (elapsed < PULSE_MIN_INTERVAL_MS) {
+          await new Promise((resolve) => setTimeout(resolve, PULSE_MIN_INTERVAL_MS - elapsed))
+        }
+      }
+      const span = Date.now() - started
+      log('pulse burst', `${index} frames in ${span}ms (${span ? Math.round((index * 1000) / span) : 0} fps)`)
+    }
+    if ((remote.current?.flash?.length ?? 0) > 0) await runFlash()
+    else await submit()
+  }, [snapshotTimed, runFlash, submit])
+
   // ---- session lifecycle -------------------------------------------------
 
   const begin = useCallback(async () => {
     frames.current.clear()
     observations.current = []
+    pulseTimes.current = []
     pendingCaptures.current = []
     submitted.current = false
     setScreen({ kind: 'starting' })
@@ -286,7 +384,8 @@ export function EKYCCamera({
         ...(personId ? { personId } : {}),
         ...(displayName ? { displayName } : {}),
         tier,
-      } as never)
+        ...(evaluationLabel ? { label: evaluationLabel } : {}),
+      })
       remote.current = created
       log('session', `${created.sessionId.slice(0, 10)} ${created.challenges.join(',')}`)
       log(
@@ -319,7 +418,7 @@ export function EKYCCamera({
       log('createSession failed', (error as Error).message)
       setScreen({ kind: 'error', message: (error as Error).message })
     }
-  }, [client, purpose, personId, displayName, tier, tuning])
+  }, [client, purpose, personId, displayName, tier, tuning, evaluationLabel])
 
   const handleEvent = useCallback(
     (event: SessionEvent) => {
@@ -341,21 +440,21 @@ export function EKYCCamera({
             leftEye: signal?.leftEye ?? 1,
             rightEye: signal?.rightEye ?? 1,
             smile: signal?.smile ?? 0,
+            mouthOpen: signal?.mouthOpen ?? 0,
           },
         })
         stepStartedAt.current = Date.now()
         return
       }
       if (event.type === 'complete') {
-        if ((remote.current?.flash?.length ?? 0) > 0) void runFlash()
-        else void submit()
+        void runPulse()
         return
       }
       log('liveness failed', event.reason)
       hapticFailure()
       setScreen({ kind: 'result', passed: false, reasons: [`LOCAL_${event.reason}`] })
     },
-    [capture, submit, runFlash],
+    [capture, runPulse],
   )
 
   // Start once permission is granted — and only then. This effect must not
@@ -426,8 +525,11 @@ export function EKYCCamera({
       createFaceDetectorOutput({
         performanceMode: 'fast',
         runClassifications: true,
-        runLandmarks: false,
-        runContours: false,
+        // Landmarks + contours give the lip gap for the open-mouth challenge.
+        // ML Kit computes contours for the most prominent face only, which is
+        // the one we track anyway.
+        runLandmarks: true,
+        runContours: true,
         trackingEnabled: false,
         cameraFacing: 'front',
         outputResolution: 'preview',
@@ -490,9 +592,11 @@ export function EKYCCamera({
 
   const holding = state.holdProgress > 0.05
   const instruction =
-    state.phase === 'uploading'
-      ? t.uploading
-      : instructionFor(locale, state.framing, state.challenge, holding)
+    screen.kind === 'pulsing'
+      ? t.pulseHold
+      : state.phase === 'uploading'
+        ? t.uploading
+        : instructionFor(locale, state.framing, state.challenge, holding)
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
@@ -506,6 +610,7 @@ export function EKYCCamera({
           // frame of an otherwise perfect run). Off again once there is a verdict.
           isActive={
             screen.kind === 'flashing' ||
+            screen.kind === 'pulsing' ||
             (screen.kind === 'capturing' && (state.phase === 'running' || state.phase === 'uploading'))
           }
           outputs={outputs}
@@ -655,6 +760,7 @@ export function toSignal(faces: Face[], now: number = Date.now()): FaceSignal {
     leftEye: 1,
     rightEye: 1,
     smile: 0,
+    mouthOpen: 0,
     box: { x: 0, y: 0, w: 0, h: 0 },
     t: now,
   }
@@ -674,6 +780,7 @@ export function toSignal(faces: Face[], now: number = Date.now()): FaceSignal {
     leftEye: face.leftEyeOpenProbability ?? 1,
     rightEye: face.rightEyeOpenProbability ?? 1,
     smile: face.smilingProbability ?? 0,
+    mouthOpen: mouthOpenness(face),
     box: {
       x: face.bounds.x / fw,
       y: face.bounds.y / fh,

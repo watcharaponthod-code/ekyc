@@ -11,17 +11,28 @@ export type CreateSessionRequest = {
   purpose: Purpose
   personId?: string
   displayName?: string
+  tier?: 'full' | 'reduced'
   client?: {
     platform: string
     osVersion: string
     model: string
     appVersion: string
   }
+  /**
+   * PAD-evaluation tag (`bona_fide`, `mask_silicone`, ...). Only meaningful on
+   * an evaluation server with retention on; ignored by the decision.
+   */
+  label?: string
 }
 
 export type EKYCClientOptions = {
   /** e.g. `https://ekyc.example.com` — no trailing slash needed. */
   baseUrl: string
+  /**
+   * Shared secret sent as `X-API-Key` on every request. Required when the
+   * server sets `EKYC_API_KEYS`. Authenticates the app, not the person.
+   */
+  apiKey?: string
   timeoutMs?: number
   /** Extra headers (auth token, tracing id) resolved per request. */
   headers?: () => Record<string, string> | Promise<Record<string, string>>
@@ -163,13 +174,14 @@ export class EKYCClient {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), this.timeoutMs)
     const extra = (await this.options.headers?.()) ?? {}
+    const auth: Record<string, string> = this.options.apiKey ? { 'X-API-Key': this.options.apiKey } : {}
 
     let response: Response
     try {
       response = await this.fetchImpl(`${this.baseUrl}${path}`, {
         method,
         signal: controller.signal,
-        headers: { ...extra, ...(init.headers ?? {}) },
+        headers: { ...auth, ...extra, ...(init.headers ?? {}) },
         ...(init.body === undefined ? {} : { body: init.body }),
       })
     } catch (cause) {
