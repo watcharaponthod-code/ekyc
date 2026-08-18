@@ -318,3 +318,38 @@ class TestActiveFlash:
         out = decide(good_case(), TH)  # flash_commanded defaults empty
         assert out.passed
         assert "flash" not in out.scores
+
+
+# --- injection / deepfake defence -------------------------------------------
+from app.schemas import Attestation  # noqa: E402
+
+
+class TestInjectionDefence:
+    def test_a_repeated_frame_across_steps_is_flagged(self):
+        data = good_case()
+        data.frame_hashes = {"neutral": "a", "turnLeft": "DUP", "turnRight": "DUP", "closeEyes": "d"}
+        assert "FRAMES_DUPLICATE" in decide(data, TH).reasons
+
+    def test_distinct_frames_are_fine(self):
+        data = good_case()
+        data.frame_hashes = {"neutral": "a", "turnLeft": "b", "turnRight": "c", "closeEyes": "d"}
+        assert decide(data, TH).passed, decide(data, TH).reasons
+
+    def test_attestation_required_but_absent_is_rejected(self):
+        th = Thresholds(require_attestation=True)
+        assert "ATTESTATION_MISSING" in decide(good_case(), th).reasons
+
+    def test_attestation_required_and_none_type_is_rejected(self):
+        th = Thresholds(require_attestation=True)
+        data = good_case()
+        data.manifest.attestation = Attestation(type="none", token=None)
+        assert "ATTESTATION_MISSING" in decide(data, th).reasons
+
+    def test_attestation_required_and_present_passes(self):
+        th = Thresholds(require_attestation=True)
+        data = good_case()
+        data.manifest.attestation = Attestation(type="playIntegrity", token="tok")
+        assert decide(data, th).passed, decide(data, th).reasons
+
+    def test_attestation_not_required_by_default(self):
+        assert decide(good_case(), TH).passed

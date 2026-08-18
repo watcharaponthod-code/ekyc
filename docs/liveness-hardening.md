@@ -39,11 +39,17 @@ hardening remains.
   Proven: `docker build` ok, image 1.09 GB, container `/v1/health` = onnx ok,
   session creates in-container. 3 config tests. See `server/DEPLOY.md`.
 
+- **5 (injection/deepfake defence) DONE:** `decision._check_injection`
+  (FRAMES_DUPLICATE — same bytes across two steps = injected/replayed stream)
+  + `_check_attestation` (ATTESTATION_MISSING when `require_attestation` and the
+  manifest carries no Play Integrity / App Attest token; presence-only, crypto
+  verification is a follow-up). 6 tests; fast suite 79 green. Flash's random
+  colour frames differ by construction, so legit sessions never trip the dup check.
+
 ## Next
-- 5: **Injection/deepfake defence** — reject byte/near-identical frames (injected
-  static stream repeats), require flash frames to differ, enforce attestation when
-  `require_attestation` is set.
 - 6: **Depth/3D** — landmark-planarity flat-photo cue (honest: not a mask detector).
+  Needs landmark z in FrameFacts from the mediapipe backend; add a planarity
+  score + gate, test with synthetic planar vs non-planar point clouds.
 - 7: RN flash overlay (cycle colours, tag snapshots flash_N) — needs a device build.
 - 8+: adversarial threshold tuning, end-to-end with real models, tighten.
 

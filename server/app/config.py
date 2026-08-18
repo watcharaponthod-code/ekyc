@@ -103,6 +103,12 @@ class Thresholds(BaseSettings):
     #: higher. Raise to 0.50 for FAR 0% at the cost of a 23% retry rate.
     match_min: float = 0.42
 
+    # --- injection / deepfake defence ---------------------------------------
+    #: When true, a submission whose manifest carries no device attestation
+    #: (Play Integrity / App Attest) is rejected. Presence only for now —
+    #: cryptographic token verification against Google/Apple is a follow-up.
+    require_attestation: bool = False
+
     # --- timing plausibility -------------------------------------------------
     total_duration_min_ms: int = 2_000
     total_duration_max_ms: int = 90_000

@@ -41,6 +41,9 @@ class DecisionInput:
     #: The screen-flash colours the server commanded, in order (0..1 RGB). Empty
     #: when this session issued no active-flash challenge.
     flash_commanded: list[tuple[float, float, float]] = field(default_factory=list)
+    #: SHA-256 per uploaded frame, keyed by frame key. Used to catch an injected
+    #: or replayed stream that repeats the same bytes for more than one step.
+    frame_hashes: dict[str, str] = field(default_factory=dict)
 
 
 def flash_frame_keys(n: int) -> list[str]:
@@ -94,6 +97,8 @@ def decide(data: DecisionInput, th: Thresholds) -> DecisionOutput:
         out.reasons.append("IDENTITY_INCONSISTENT")
 
     out.reasons.extend(_check_flash(data, th, out.scores))
+    out.reasons.extend(_check_injection(data))
+    out.reasons.extend(_check_attestation(data, th))
 
     return out
 
@@ -211,6 +216,40 @@ def _check_pose_and_eyes(
             reasons.append("POSE_SAME_DIRECTION")
 
     return scores, reasons
+
+
+def _check_injection(data: DecisionInput) -> list[str]:
+    """Injection / replay tell: two steps that share the exact same bytes.
+
+    A live capture never produces byte-identical frames for different steps
+    (sensor noise alone differs), and the flash frames are different colours by
+    construction. An injected static stream, or a replayed evidence bundle,
+    repeats a frame — so a duplicate hash across distinct keys is a strong,
+    zero-cost signal. Sophisticated per-frame-varying injection needs the
+    active-flash correlation and device attestation to catch; this handles the
+    common case for free.
+    """
+    seen: dict[str, str] = {}
+    for key, digest in (data.frame_hashes or {}).items():
+        if digest in seen:
+            return ["FRAMES_DUPLICATE"]
+        seen[digest] = key
+    return []
+
+
+def _check_attestation(data: DecisionInput, th: Thresholds) -> list[str]:
+    """Require a device-integrity token when configured. Presence only for now.
+
+    Verifying the token cryptographically (Play Integrity / App Attest) needs
+    Google/Apple APIs and is the next step; even presence raises the bar against
+    an attacker running the flow outside a genuine, unmodified app.
+    """
+    if not th.require_attestation:
+        return []
+    att = data.manifest.attestation
+    if att is None or att.type == "none" or not att.token:
+        return ["ATTESTATION_MISSING"]
+    return []
 
 
 def _check_flash(data: DecisionInput, th: Thresholds, scores: dict[str, object]) -> list[str]:

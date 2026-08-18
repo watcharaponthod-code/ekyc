@@ -168,7 +168,8 @@ def verify_evidence(
 
     with timed("decide", frames=len(facts)) as span:
         output = decide(
-            DecisionInput(issued_challenges, manifest, facts, flash_commanded), thresholds
+            DecisionInput(issued_challenges, manifest, facts, flash_commanded, hashes),
+            thresholds,
         )
         span["decision"] = "pass" if output.passed else "fail"
         span["reasons"] = ",".join(output.reasons) or "-"
