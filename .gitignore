@@ -23,3 +23,10 @@ __pycache__/
 
 # local Claude Code config
 .claude/
+
+# python
+/server/.venv/
+/server/.railwayignore.bak
+# local Android build outputs
+*.apk
+*.aab

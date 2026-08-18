@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "eKYC Local",
+    "slug": "ekyc-local",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.ekyc.local",
+      "infoPlist": {
+        "NSCameraUsageDescription": "ใช้กล้องหน้าเพื่อยืนยันตัวตนบนเครื่อง / Used for on-device face liveness."
+      }
+    },
+    "android": {
+      "package": "com.ekyc.local",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#070A12",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
+            "minSdkVersion": 26,
+            "ndkVersion": "28.2.13676358"
+          }
+        }
+      ]
+    ]
+  }
+}

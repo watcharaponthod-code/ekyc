@@ -16,6 +16,10 @@ hardening remains.
 | 3 | **Depth/3D (landmark planarity)** | ✅ built (advisory, empirically weak) | flat/degenerate-input cue only; not a photo/mask detector |
 | 4 | **Injection/deepfake defence** | ✅ built | frame-dup + attestation enforcement + flash-binding |
 | 5 | Server authority / nonce / delete | ✅ shipped | |
+| 6 | **Expression challenge (`openMouth`, `smile`)** | ✅ built (server+device) | rigid-mask defence: MediaPipe `jawOpen`/`mouthSmile*` vs neutral, two-part rule; full tier always includes `openMouth` |
+| 7 | **rPPG pulse liveness** | ✅ built (server+device), **advisory** | silicone/latex-mask defence: burst of stills, POS + multi-patch spectral prominence. Calibrated on synthetic traces only. |
+| 8 | **ISO/IEC 30107-3 evaluation harness** | ✅ built | `EKYC_RETAIN_FRAMES=all` + `label` → `scripts/pad_eval.py`: APCER per species, BPCER, ACER, NRR, Wilson CI, gate attribution, `--rescore` |
+| 9 | API key + attestation hook | ✅ built | `EKYC_API_KEYS`; `<EKYCCamera attestation={…}>` provider feeds the manifest |
 
 ## Iteration log
 - **1 (active-flash core):** `server/app/flash.py` — pure scorer: correlation of
@@ -62,7 +66,22 @@ hardening remains.
   / FRAMES_DUPLICATE / ATTESTATION_MISSING (th+en). TS clean; 96 module tests.
   On-device runtime pending an APK build, like the rest of the RN UI.
 
+- **8 (mask defence, 2026-08-18):** `FrameFacts.mouth_open/smile/skin_patches`;
+  `EXPRESSION_CHALLENGES` issued only when `backend.supports_expressions`
+  (deepface yes, onnx no); `decision._check_expression` (MOUTH_NOT_OPEN /
+  SMILE_ABSENT / EXPRESSION_UNVERIFIABLE, `expression_rule`); `app/pulse.py`
+  + `_check_pulse` (PULSE_ABSENT / PULSE_FRAME_MISSING, `pulse_rule`
+  advisory), pulse frames measured on the light path (landmarker only), first/
+  last anchored into identity consistency; PAD now judged on challenge frames
+  only (flash frames were dragging `pad_min` down); `services/retention.py` +
+  `scripts/pad_eval.py`; `require_api_key`. Device: `OpenMouthChallenge`,
+  ML Kit contours → `mouthOpenness`, pulse burst phase before flash,
+  `attestation` prop, `apiKey`. Server fast suite 145, module 105.
+
 ## Next
+- **rPPG calibration on phones** — record `bona_fide` + `mask_*` with retention
+  on, run `pad_eval.py`, decide `pulse_min` / `pulse_rule=enforce`. This is the
+  gate between "defended" and "measured".
 - 8: **Adversarial flash robustness** — harden the correlation against real
   noise (low ambient, one-channel-dominant room light, partial reflection,
   motion between frames); tune FLASH_MIN; add edge-case tests.

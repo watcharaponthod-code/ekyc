@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": [
+      "ESNext",
+      "DOM"
+    ],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "types": [
+      "jest",
+      "react"
+    ],
+    "paths": {
+      "@ekyc/react-native-ekyc": [
+        "./../react-native-ekyc/src/index.ts"
+      ],
+      "@ekyc/react-native-ekyc/src/*": [
+        "./../react-native-ekyc/src/*"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "tests",
+    "tflite.d.ts"
+  ]
+}

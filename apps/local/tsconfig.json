@@ -1,0 +1,27 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "paths": {
+      "@ekyc/react-native-ekyc": [
+        "../../packages/react-native-ekyc/src/index.ts"
+      ],
+      "@ekyc/react-native-ekyc/src/*": [
+        "../../packages/react-native-ekyc/src/*"
+      ],
+      "@ekyc/react-native-ekyc-local": [
+        "../../packages/react-native-ekyc-local/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "../../packages/react-native-ekyc-local/tflite.d.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

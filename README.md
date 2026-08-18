@@ -3,10 +3,12 @@
 A React Native module plus a Python server. The phone runs the interaction; the server makes the decision.
 
 ```
-packages/react-native-ekyc/   the module the team consumes
-apps/example/                 Expo demo (enrol / verify / identify)
-server/                       FastAPI decision service (MediaPipe + DeepFace)
-docs/                         design spec, ML validation, UI research, device QA
+packages/react-native-ekyc/        the module the team consumes (server-verified)
+packages/react-native-ekyc-local/  100 % on-device variant: ML Kit + MobileFaceNet, no server
+apps/example/                      Expo demo for the server flow (enrol / verify / identify)
+apps/local/                        Expo app for the local flow → release APK on GitHub Releases
+server/                            FastAPI decision service (MediaPipe + DeepFace; onnx image on Railway)
+docs/                              design spec, ML validation, PAD evaluation, UI research, device QA
 ```
 
 ## Why it is split this way
@@ -33,6 +35,7 @@ see `docs/ml-validation.md` §0.
 
 - `docs/superpowers/specs/2026-08-17-ekyc-hybrid-design.md` — the design, the threat model, and what this system does not defend against
 - `docs/ml-validation.md` — what was measured, and three published claims that turned out to be wrong
+- `docs/pad-evaluation.md` — how to measure APCER/BPCER per attack species (ISO/IEC 30107-3 metrics) with the built-in harness
 - `docs/qa-checklist.md` — what still needs a physical phone
 - `packages/react-native-ekyc/README.md` — how to use the module
 
@@ -40,12 +43,12 @@ see `docs/ml-validation.md` §0.
 
 ```sh
 npm install
-npm test                      # 77 module tests
+npm test                      # 105 module tests + 16 local-package tests
 
 cd server
 py -3.12 -m pip install -r requirements.txt
 py -3.12 scripts/fetch_models.py          # ~202 MB, SHA-256 verified
-py -3.12 -m pytest tests -m ""            # 90 tests, 42 of them on real models
+py -3.12 -m pytest tests -m ""            # 187 tests, 42 of them on real models
 py -3.12 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 cd ../apps/example
@@ -64,4 +67,7 @@ Two gates remain before production, both in `docs/qa-checklist.md`:
    the `yawSign` calibration need real hardware.
 2. **Thresholds are calibrated against Western press photography and one
    vendor's selfie set**, not the target population, and only screen-replay
-   attacks have been tested — not print, cut-out or mask.
+   attacks have been tested — not print, cut-out or mask. The mask defences
+   (`openMouth` challenge, rPPG pulse) and the ISO/IEC 30107-3 harness exist;
+   see `docs/pad-evaluation.md` for how to run the measurement that turns
+   "defended" into a number.

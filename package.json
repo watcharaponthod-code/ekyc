@@ -8,8 +8,9 @@
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspace=@ekyc/react-native-ekyc",
-    "example": "npm run start --workspace=example"
+    "test": "npm run test --workspace=@ekyc/react-native-ekyc --workspace=@ekyc/react-native-ekyc-local",
+    "example": "npm run start --workspace=example",
+    "local": "npm run start --workspace=local"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",

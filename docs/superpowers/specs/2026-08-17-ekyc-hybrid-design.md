@@ -46,7 +46,9 @@ v2 follows what every serious vendor does (FaceTec, AWS Rekognition Face Livenes
 | Swap attack (pass liveness as A, submit B's photo) | ArcFace pairwise consistency across all evidence frames — all frames must be the same person |
 | Replaying a previously captured evidence bundle | nonce + TTL + `consumed_at` one-shot + frame hash blacklist |
 | Emulator / hooked runtime | Play Integrity / App Attest bound to `sessionId` (Phase 5) |
-| Deepfake / 3D mask | **NOT handled.** See §12. |
+| Rigid 3-D mask (3-D print, resin, paper) | `openMouth` challenge verified from MediaPipe `jawOpen` vs the neutral frame — a rigid jaw cannot open (2026-08-18) |
+| Flexible latex / silicone mask | rPPG pulse liveness (`server/app/pulse.py`): a burst of stills, POS projection over forehead + cheeks, spectral peak in 0.7–3 Hz — no perfusion, no pulse. **Advisory until calibrated on phones.** Plus `openMouth` (partial). See `docs/pad-evaluation.md`. |
+| Deepfake / injected stream | frame-hash duplication + flash-binding; attestation presence-only. **Not fully handled** — see §12. |
 
 ---
 
@@ -533,8 +535,8 @@ EKYC/
 
 ## 12. Limitations — stated plainly
 
-1. **Deepfakes and 3D masks are not handled.** MiniFASNet-V2 is a 2015-era-lineage print/replay classifier. A real-time face-swap injected as a virtual camera, or a high-quality silicone mask, will very likely pass. Defeating those needs certified vendor tech (FaceTec, iProov) or, at minimum, camera-injection detection. Do not describe this system as deepfake-resistant.
-2. **No certification.** ISO 30107-3 / iBeta Level 1–2 is what regulators ask for in bank account opening. Nobody self-builds through that audit. This system is appropriate for **internal and medium-assurance** use — staff login, attendance, step-up auth inside an app whose KYC happened elsewhere. It is *not* appropriate as the sole identity proof for opening a regulated financial account (ETDA IAL 2.3 / NDID territory).
+1. **Deepfakes are not handled; 3-D masks are defended but not yet measured.** MiniFASNet-V2 is a 2015-era-lineage print/replay classifier. Since 2026-08-18 two mask-specific layers exist — the server-verified `openMouth` challenge (rigid masks) and rPPG pulse liveness (silicone/latex, `pulse_rule` advisory by default) — and an ISO/IEC 30107-3-style evaluation harness (`docs/pad-evaluation.md`) to measure them. Until real masks have been presented and counted, do not claim mask resistance. A real-time face-swap injected as a virtual camera still needs cryptographically verified attestation. Do not describe this system as deepfake-resistant.
+2. **No certification.** ISO 30107-3 / iBeta Level 1–2 is what regulators ask for in bank account opening. Nobody self-builds through that audit — `scripts/pad_eval.py` produces the standard's metrics for an internal run, which is preparation for the lab, not a substitute. This system is appropriate for **internal and medium-assurance** use — staff login, attendance, step-up auth inside an app whose KYC happened elsewhere. It is *not* appropriate as the sole identity proof for opening a regulated financial account (ETDA IAL 2.3 / NDID territory).
 3. **All six thresholds are unvalidated defaults** (§4.6). They come from model documentation and general practice, not from measurement on the target population. ArcFace R50 is trained on WebFace600K, which under-represents Thai faces; the match threshold in particular will move.
 4. **InsightFace `buffalo_l` weights are research-licensed** (§4.1). Commercial deployment requires resolving this. Nothing else in the stack has this problem — MiniFASNet is Apache-2.0.
 5. **Server-side eye-openness relies on a calibrated landmark-index constant.** If the calibration image is unrepresentative the metric degrades. Mitigation: it is relative to the user's own neutral frame, and it is one of several signals, not a sole gate.
