@@ -62,6 +62,8 @@ class FrameFacts:
     blendshapes: dict[str, float] = field(default_factory=dict)
     #: Mean face colour, 0..1 RGB — read by active-flash liveness only.
     face_rgb: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    #: Landmark non-planarity (depth cue); -1.0 when the backend cannot measure it.
+    planarity: float = -1.0
 
 
 @runtime_checkable

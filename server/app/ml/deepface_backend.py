@@ -28,12 +28,14 @@ import cv2
 import numpy as np
 
 from .backend import DetectedFace
+from .geometry import planarity_score
 from .mediapipe_landmarks import (
     FaceGeometry,
     bbox_from_landmarks,
     eye_aspect_ratio,
     five_points,
     landmarks_to_pixels,
+    landmarks_to_points_3d,
     pose_from_landmarks,
     pose_from_matrix,
 )
@@ -151,6 +153,7 @@ class DeepFaceMediaPipeBackend:
         faces: list[FaceGeometry] = []
         for index, landmarks in enumerate(result.face_landmarks or []):
             points = landmarks_to_pixels(landmarks, width, height)
+            planarity = planarity_score(landmarks_to_points_3d(landmarks, width, height))
 
             matrices = getattr(result, "facial_transformation_matrixes", None) or []
             if index < len(matrices):
@@ -177,6 +180,7 @@ class DeepFaceMediaPipeBackend:
                     roll=roll,
                     ear=eye_aspect_ratio(points),
                     blendshapes=blendshapes,
+                    planarity=planarity,
                     # MediaPipe does not expose a per-face detection score in
                     # IMAGE mode; presence already passed the configured
                     # confidence gates, so report the gate value rather than

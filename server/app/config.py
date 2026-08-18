@@ -103,6 +103,14 @@ class Thresholds(BaseSettings):
     #: higher. Raise to 0.50 for FAR 0% at the cost of a 23% retry rate.
     match_min: float = 0.42
 
+    # --- depth / 3-D (advisory) ---------------------------------------------
+    #: Landmark non-planarity below this reads as a flat presentation. Weak cue:
+    #: MediaPipe infers z from a single image, so it mostly catches degenerate /
+    #: truly flat inputs, not a photo of a face. Advisory unless planarity_rule
+    #: is `enforce`.
+    planarity_min: float = 0.004
+    planarity_rule: str = Field(default="advisory", pattern="^(advisory|enforce)$")
+
     # --- injection / deepfake defence ---------------------------------------
     #: When true, a submission whose manifest carries no device attestation
     #: (Play Integrity / App Attest) is rejected. Presence only for now —

@@ -353,3 +353,44 @@ class TestInjectionDefence:
 
     def test_attestation_not_required_by_default(self):
         assert decide(good_case(), TH).passed
+
+
+# --- depth / 3-D landmark planarity (advisory flat-input cue) ----------------
+from app.ml.geometry import planarity_score  # noqa: E402
+
+
+class TestPlanarity:
+    def test_flat_scores_near_zero_tilted_plane_too_and_3d_scores_higher(self):
+        rng = np.random.default_rng(0)
+        xy = rng.random((300, 2))
+        flat = np.column_stack([xy, np.zeros(300)])
+        tilted = np.column_stack([xy, 0.7 * xy[:, 0] - 0.3 * xy[:, 1]])  # a tilted plane
+        d3 = np.column_stack([xy, rng.random(300) * 0.5])
+        assert planarity_score(flat) < 1e-6
+        assert planarity_score(tilted) < 1e-3  # rotation-invariant: a plane is a plane
+        assert planarity_score(d3) > 0.02
+        assert planarity_score(np.zeros((2, 3))) == -1.0  # degenerate sentinel
+
+    def test_gate_is_advisory_by_default(self):
+        data = good_case()
+        for f in data.facts.values():
+            f.planarity = 0.0001
+        out = decide(data, TH)
+        assert out.passed, out.reasons
+        assert "planarity" in out.scores
+
+    def test_enforce_rejects_a_flat_neutral(self):
+        th = Thresholds(planarity_rule="enforce")
+        data = good_case()
+        data.facts["neutral"].planarity = 0.0001
+        assert "FLAT_FACE" in decide(data, th).reasons
+
+    def test_enforce_passes_a_3d_neutral(self):
+        th = Thresholds(planarity_rule="enforce")
+        data = good_case()
+        for f in data.facts.values():
+            f.planarity = 0.05
+        assert decide(data, th).passed, decide(data, th).reasons
+
+    def test_unmeasured_planarity_is_skipped(self):
+        assert "planarity" not in decide(good_case(), TH).scores

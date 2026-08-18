@@ -162,6 +162,31 @@ def face_ratio(image_bgr: np.ndarray, bbox: np.ndarray) -> float:
     return float(bbox[2] - bbox[0]) / float(width)
 
 
+def planarity_score(points: np.ndarray) -> float:
+    """How non-planar a 3-D point set is: 0 = perfectly flat, larger = more depth.
+
+    PCA on the centred points; returns the fraction of variance along the
+    least-significant axis (the best-fit plane's normal),
+    lambda_min / (lambda1+lambda2+lambda3). Rotation-invariant, so a tilted
+    plane still scores ~0. A photo held to the camera is nearly coplanar; a real
+    face's nose and brow give it a small but non-zero fraction.
+
+    Honest caveat: MediaPipe *infers* the z coordinate from a single RGB image
+    against a 3-D face prior, so a photo of a face still gets face-shaped z. This
+    is a weak flat-input cue, not a mask detector — hence advisory by default.
+    Returns -1.0 for a degenerate input (used as a "not measured" sentinel).
+    """
+    pts = np.asarray(points, dtype=np.float64)
+    if pts.ndim != 2 or pts.shape[1] != 3 or pts.shape[0] < 4:
+        return -1.0
+    centred = pts - pts.mean(axis=0)
+    eigvals = np.linalg.eigvalsh(centred.T @ centred)  # ascending, non-negative
+    total = float(eigvals.sum())
+    if total <= 1e-12:
+        return 0.0
+    return float(eigvals[0] / total)
+
+
 def cosine(a: np.ndarray, b: np.ndarray) -> float:
     """Cosine similarity. Inputs are expected L2-normalised; we normalise anyway."""
     na = float(np.linalg.norm(a))

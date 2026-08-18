@@ -46,10 +46,20 @@ hardening remains.
   verification is a follow-up). 6 tests; fast suite 79 green. Flash's random
   colour frames differ by construction, so legit sessions never trip the dup check.
 
+- **6 (depth/3-D planarity) DONE — and empirically confirmed weak:**
+  `geometry.planarity_score` (PCA λ_min/Σλ), computed from MediaPipe's 478 3-D
+  landmarks in the backend, on `FrameFacts.planarity`; advisory `_check_planarity`
+  gate (FLAT_FACE only under `planarity_rule=enforce`). Measured on real LFW
+  faces: planarity **~0.09-0.11**, a flat point set 0.0. BUT LFW are 2-D photos
+  and still score ~0.10 — MediaPipe infers face-shaped z — so this does **not**
+  catch a photo of a face, only truly-flat/degenerate/injected frames. Kept as an
+  advisory sanity signal; real depth defence needs hardware. 84 tests green.
+
 ## Next
-- 6: **Depth/3D** — landmark-planarity flat-photo cue (honest: not a mask detector).
-  Needs landmark z in FrameFacts from the mediapipe backend; add a planarity
-  score + gate, test with synthetic planar vs non-planar point clouds.
+- 7: **RN device flash overlay** — the device side of active-flash: cycle the
+  session's colours full-screen, snapshot each as flash_N, upload. Plus client
+  copy for the new reason codes (FLASH_SPOOF, FRAMES_DUPLICATE, ATTESTATION_MISSING).
+- 8+: adversarial threshold tuning, end-to-end with real models, tighten.
 - 7: RN flash overlay (cycle colours, tag snapshots flash_N) — needs a device build.
 - 8+: adversarial threshold tuning, end-to-end with real models, tighten.
 

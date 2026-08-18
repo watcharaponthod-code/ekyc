@@ -97,6 +97,7 @@ def decide(data: DecisionInput, th: Thresholds) -> DecisionOutput:
         out.reasons.append("IDENTITY_INCONSISTENT")
 
     out.reasons.extend(_check_flash(data, th, out.scores))
+    out.reasons.extend(_check_planarity(data, th, out.scores))
     out.reasons.extend(_check_injection(data))
     out.reasons.extend(_check_attestation(data, th))
 
@@ -216,6 +217,19 @@ def _check_pose_and_eyes(
             reasons.append("POSE_SAME_DIRECTION")
 
     return scores, reasons
+
+
+def _check_planarity(data: DecisionInput, th: Thresholds, scores: dict[str, object]) -> list[str]:
+    """Flat-input depth cue on the neutral frame. Advisory unless configured to
+    enforce; skipped entirely when the backend did not measure it (planarity<0).
+    """
+    p = data.facts[NEUTRAL_KEY].planarity
+    if p < 0:
+        return []
+    scores["planarity"] = round(p, 5)
+    if th.planarity_rule == "enforce" and p < th.planarity_min:
+        return ["FLAT_FACE"]
+    return []
 
 
 def _check_injection(data: DecisionInput) -> list[str]:

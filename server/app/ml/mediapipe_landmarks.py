@@ -51,6 +51,8 @@ class FaceGeometry:
     #: Blendshape reads, 0..1, empty when blendshapes are disabled.
     blendshapes: dict[str, float]
     score: float
+    #: Non-planarity of the 478 landmarks (0 flat .. larger 3-D); -1 not measured.
+    planarity: float = -1.0
 
     @property
     def width(self) -> float:
@@ -60,6 +62,14 @@ class FaceGeometry:
 def landmarks_to_pixels(landmarks, width: int, height: int) -> np.ndarray:
     """Normalised Face Mesh landmarks -> pixel coordinates."""
     return np.array([[lm.x * width, lm.y * height] for lm in landmarks], dtype=np.float32)
+
+
+def landmarks_to_points_3d(landmarks, width: int, height: int) -> np.ndarray:
+    """Face Mesh landmarks -> 3-D points in pixel-ish scale (z scaled by width,
+    which is roughly the units MediaPipe reports z in)."""
+    return np.array(
+        [[lm.x * width, lm.y * height, lm.z * width] for lm in landmarks], dtype=np.float32
+    )
 
 
 def bbox_from_landmarks(points: np.ndarray) -> np.ndarray:

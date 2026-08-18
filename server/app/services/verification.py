@@ -124,6 +124,7 @@ def _measure_single_pass(backend: FaceBackend, analyze, key: str, image_bgr: np.
         embedding=embedding,
         blendshapes=dict(face.blendshapes),
         face_rgb=mean_face_color(image_bgr, face.bbox),
+        planarity=getattr(face, "planarity", -1.0),
     )
     log.debug(
         "frame measured",
