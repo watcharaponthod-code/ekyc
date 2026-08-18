@@ -33,13 +33,21 @@ hardening remains.
   passed to `verify_evidence`. 4 API tests (off by default, randomised, real
   clears the gate, photo→FLASH_SPOOF). Fast suite 70 green.
 
-## Next (reordered: server-testable layers before the RN overlay)
-- 4: **Injection/deepfake defence** — reject byte/near-identical frames (an
-  injected static stream repeats), require flash frames to differ, enforce
-  device attestation when `require_attestation` is set.
-- 5: **Depth/3D** — landmark-planarity flat-photo cue (honest: not a mask detector).
-- 6: RN flash overlay (cycle colours, tag snapshots flash_N) — needs a device build.
-- 7+: adversarial threshold tuning, end-to-end with real models, tighten.
+## Next (user added deploy; interleave with hardening)
+- 4: **Deploy prep** — Dockerfile (multi-stage, EKYC_BACKEND=onnx to drop TF/torch),
+  read Railway `DATABASE_URL`, add psycopg, `docker build` smoke test. Postgres is
+  the "flexible DB" for Railway; pgvector later for 1:N scale.
+- 5: **Injection/deepfake defence** — reject byte/near-identical frames (injected
+  static stream repeats), require flash frames to differ, enforce attestation when
+  `require_attestation` is set.
+- 6: **Depth/3D** — landmark-planarity flat-photo cue (honest: not a mask detector).
+- 7: RN flash overlay (cycle colours, tag snapshots flash_N) — needs a device build.
+- 8+: adversarial threshold tuning, end-to-end with real models, tighten.
+
+## Handoff decision list (for the dev team) — delivered to user this turn
+Top-10 decision table given in chat: architecture(hybrid), PAD(MiniFASNet→FLIP),
+active-flash(building), recognition(ArcFace), DB(SQLite→Postgres), 1:N(pgvector),
+injection(attestation), deploy(Docker→Railway), cert(iBeta L1→L2), handoff(npm module).
 - 3: landmark planarity score from `FrameFacts` (needs landmark z in facts).
 - 4: replay (frame hash dup / low inter-frame diff) + require attestation when configured.
 - 5+: adversarial threshold tuning, end-to-end tests, tighten.
