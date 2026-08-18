@@ -17,6 +17,24 @@ curl localhost:8000/v1/health
 SQLite is the zero-config default (data lives in the container — fine for a
 smoke test, not for production).
 
+## Live test deployment (2026-08-18)
+
+| | |
+|---|---|
+| URL | `https://ekyc-api-production-1c11.up.railway.app` |
+| project / service | Railway `ekyc-server` / `ekyc-api` (+ `Postgres`) |
+| backend | `onnx` (SCRFD + ArcFace + MiniFASNet) — **no `openMouth`/`smile` verification, eye rule advisory**; see `docs/ml-validation.md` §0 |
+| auth | `X-API-Key: <key>` on every route but `/v1/health`. The key lives only in Railway → `ekyc-api` → Variables → `EKYC_API_KEYS`; rotate it there. |
+| flash | on (`EKYC_FLASH_FRAMES=4`) |
+| pulse | off (turn on with `EKYC_PULSE_FRAMES=90`, `EKYC_PULSE_DURATION_MS=8000`) |
+
+Redeploy from `server/`: `railway up --service ekyc-api --detach` (the CLI is
+linked to the project; `railway.json` selects the Dockerfile builder).
+
+For the mask defences that need MediaPipe blendshapes (`openMouth`), deploy
+the `deepface` backend instead — a multi-GB image (TensorFlow + PyTorch +
+MediaPipe); the Dockerfile here is the slim onnx one on purpose.
+
 ## Railway
 
 1. **New project → Deploy from repo.** Set the service root to `server/`
