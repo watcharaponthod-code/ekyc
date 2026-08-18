@@ -20,3 +20,6 @@ __pycache__/
 
 # local test fixtures pulled from public datasets, never redistributed
 /server/tests/fixtures/
+
+# local Claude Code config
+.claude/
