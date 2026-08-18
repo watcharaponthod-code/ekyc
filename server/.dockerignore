@@ -1,0 +1,13 @@
+**/__pycache__
+**/*.pyc
+.pytest_cache
+tests
+*.db
+*.log
+retained_frames
+ekyc.db
+# keep only the three ONNX weights the onnx backend needs
+models/*
+!models/det_10g.onnx
+!models/w600k_r50.onnx
+!models/minifasnet_v2.onnx

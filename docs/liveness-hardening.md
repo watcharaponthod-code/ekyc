@@ -33,10 +33,13 @@ hardening remains.
   passed to `verify_evidence`. 4 API tests (off by default, randomised, real
   clears the gate, photo→FLASH_SPOOF). Fast suite 70 green.
 
-## Next (user added deploy; interleave with hardening)
-- 4: **Deploy prep** — Dockerfile (multi-stage, EKYC_BACKEND=onnx to drop TF/torch),
-  read Railway `DATABASE_URL`, add psycopg, `docker build` smoke test. Postgres is
-  the "flexible DB" for Railway; pgvector later for 1:N scale.
+- **4 (deploy prep) DONE:** `Dockerfile` (slim onnx, EKYC_BACKEND=onnx),
+  `requirements-deploy.txt` (opencv-headless + psycopg, no TF/torch), `.dockerignore`,
+  `railway.json`, `config.normalize_db_url` reads Railway `DATABASE_URL` → psycopg.
+  Proven: `docker build` ok, image 1.09 GB, container `/v1/health` = onnx ok,
+  session creates in-container. 3 config tests. See `server/DEPLOY.md`.
+
+## Next
 - 5: **Injection/deepfake defence** — reject byte/near-identical frames (injected
   static stream repeats), require flash frames to differ, enforce attestation when
   `require_attestation` is set.

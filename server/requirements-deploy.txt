@@ -1,0 +1,15 @@
+# Slim runtime for containers/Railway — the ONNX backend only.
+# No mediapipe, deepface, TensorFlow or PyTorch: SCRFD + ArcFace + MiniFASNet
+# run through onnxruntime, so the image is ~500 MB instead of multi-GB.
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pydantic>=2.7
+pydantic-settings>=2.3
+SQLAlchemy>=2.0
+numpy>=1.26
+# headless: no GUI libs, the right OpenCV build for a server.
+opencv-python-headless>=4.9
+onnxruntime>=1.18
+# Postgres driver (Railway). SQLite needs nothing extra.
+psycopg[binary]>=3.1

@@ -9,8 +9,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def normalize_db_url(url: str) -> str:
+    """Make a database URL SQLAlchemy-2 + psycopg-3 ready.
+
+    Railway (and Heroku-style hosts) inject ``postgres://...``; SQLAlchemy 2
+    needs an explicit driver, and we ship psycopg 3. Rewrite the scheme so the
+    same URL works whether it came from Railway, an env override, or the SQLite
+    default. Idempotent.
+    """
+    if url.startswith("postgresql+psycopg://"):
+        return url
+    for scheme in ("postgres://", "postgresql://"):
+        if url.startswith(scheme):
+            return "postgresql+psycopg://" + url[len(scheme):]
+    return url
 
 SERVER_ROOT = Path(__file__).resolve().parent.parent
 
@@ -96,7 +112,12 @@ class Thresholds(BaseSettings):
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="EKYC_", extra="ignore")
 
-    database_url: str = "sqlite:///./ekyc.db"
+    #: Reads Railway's `DATABASE_URL` as well as `EKYC_DATABASE_URL`; the scheme
+    #: is normalised to the psycopg driver. SQLite stays the zero-config default.
+    database_url: str = Field(
+        default="sqlite:///./ekyc.db",
+        validation_alias=AliasChoices("EKYC_DATABASE_URL", "DATABASE_URL"),
+    )
     models_dir: Path = SERVER_ROOT / "models"
     session_ttl_seconds: int = 120
     #: How many challenges (besides the implicit `center`) each risk tier issues.
@@ -118,6 +139,11 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = Field(default="text", pattern="^(text|json)$")
     version: str = "0.1.0"
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_database_url(cls, value: str) -> str:
+        return normalize_db_url(value)
 
 
 settings = Settings()
