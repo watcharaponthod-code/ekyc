@@ -64,6 +64,15 @@ class FrameFacts:
     face_rgb: tuple[float, float, float] = (0.0, 0.0, 0.0)
     #: Landmark non-planarity (depth cue); -1.0 when the backend cannot measure it.
     planarity: float = -1.0
+    #: Mouth opening, 0..1 (MediaPipe `jawOpen` blendshape); -1.0 when the
+    #: backend cannot measure expressions. Read by the `openMouth` challenge —
+    #: the one thing a rigid mask cannot do.
+    mouth_open: float = -1.0
+    #: Smile, 0..1 (mean of `mouthSmileLeft/Right`); -1.0 when unmeasured.
+    smile: float = -1.0
+    #: Mean RGB (0..1) per skin patch (forehead, cheeks) — the rPPG signal
+    #: source. One patch (face-box centre) when the backend has no landmarks.
+    skin_patches: list[tuple[float, float, float]] = field(default_factory=list)
 
 
 @runtime_checkable
@@ -71,6 +80,10 @@ class FaceBackend(Protocol):
     """Vision operations the verification pipeline depends on."""
 
     name: str
+    #: True when the backend measures mouth opening and smile (`FrameFacts.
+    #: mouth_open` / `.smile`). The session issuer only asks for expression
+    #: challenges when the backend can verify them.
+    supports_expressions: bool
 
     def loaded_models(self) -> dict[str, bool]: ...
 
@@ -95,6 +108,7 @@ class FakeFaceBackend:
     """
 
     name = "fake"
+    supports_expressions = True
 
     def __init__(
         self,
@@ -103,11 +117,15 @@ class FakeFaceBackend:
         yaw: float = 0.0,
         eye_openness: float = 0.30,
         embedding: np.ndarray | None = None,
+        mouth_open: float = 0.05,
+        smile: float = 0.05,
     ) -> None:
         self.face_count = face_count
         self.pad = pad
         self.yaw = yaw
         self._eye_openness = eye_openness
+        self.mouth_open = mouth_open
+        self.smile = smile
         self._embedding = (
             embedding if embedding is not None else _unit(np.ones(512, dtype=np.float32))
         )
@@ -141,6 +159,10 @@ class FakeFaceBackend:
 
     def pose(self, image_bgr: np.ndarray, kps: np.ndarray) -> tuple[float, float, float]:
         return self.yaw, 0.0, 0.0
+
+    def expressions(self, image_bgr: np.ndarray, bbox: np.ndarray) -> tuple[float, float]:
+        """(mouth_open, smile) — scripted."""
+        return self.mouth_open, self.smile
 
 
 def _unit(vector: np.ndarray) -> np.ndarray:

@@ -22,11 +22,13 @@ RUN apt-get update \
 COPY requirements-deploy.txt .
 RUN pip install --no-cache-dir -r requirements-deploy.txt
 
-COPY app ./app
 COPY scripts ./scripts
-# The three ONNX weights the onnx backend loads. Alternatively, on a host with
-# build-time network, drop this COPY and run `python scripts/fetch_models.py`.
-COPY models/det_10g.onnx models/w600k_r50.onnx models/minifasnet_v2.onnx ./models/
+# The three ONNX weights the onnx backend loads (~200 MB, SHA-256 verified),
+# fetched at build time so the repo never carries them. Cached as its own
+# layer: app-code changes below do not re-download.
+RUN python scripts/fetch_models.py onnx
+
+COPY app ./app
 
 EXPOSE 8000
 # Railway injects $PORT; default to 8000 for a plain `docker run`.

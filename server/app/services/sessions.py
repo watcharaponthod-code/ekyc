@@ -13,10 +13,10 @@ import secrets
 from sqlalchemy.orm import Session
 
 from ..config import settings
-from ..decision import VERIFIABLE_CHALLENGES
+from ..decision import EXPRESSION_CHALLENGES, VERIFIABLE_CHALLENGES
 from ..flash import FLASH_PALETTE
 from ..models import VerificationSession
-from ..schemas import CreateSessionRequest, CreatedSession, SessionPolicy
+from ..schemas import CreateSessionRequest, CreatedSession, PulsePlan, SessionPolicy
 
 
 class SessionError(Exception):
@@ -31,17 +31,42 @@ def _now() -> dt.datetime:
     return dt.datetime.now(dt.timezone.utc)
 
 
-def pick_challenges(tier: str, rng: secrets.SystemRandom | None = None) -> list[str]:
+def pick_challenges(
+    tier: str,
+    rng: secrets.SystemRandom | None = None,
+    *,
+    expressions: bool | None = None,
+) -> list[str]:
     """Choose and shuffle the challenges for this session.
 
     Random *order* matters as much as random selection: a replay of a recorded
     session only works if the recording happens to match the order asked for.
+
+    ``expressions`` says whether the running backend can verify `openMouth` /
+    `smile` (blendshapes). When it can, and `always_open_mouth` is set, every
+    full-tier session includes `openMouth` — the challenge a rigid mask cannot
+    answer — in a random position among randomly drawn companions.
     """
     random = rng or secrets.SystemRandom()
     count = settings.challenges_reduced if tier == "reduced" else settings.challenges_full
-    pool = list(VERIFIABLE_CHALLENGES)
+    use_expressions = settings.expression_challenges if expressions is None else (
+        expressions and settings.expression_challenges
+    )
+    pool = list(VERIFIABLE_CHALLENGES) + (list(EXPRESSION_CHALLENGES) if use_expressions else [])
     count = max(1, min(count, len(pool)))
+    if use_expressions and settings.always_open_mouth and tier != "reduced":
+        rest = [name for name in pool if name != "openMouth"]
+        chosen = ["openMouth", *random.sample(rest, count - 1)]
+        random.shuffle(chosen)
+        return chosen
     return random.sample(pool, count)
+
+
+def pick_pulse() -> dict[str, int] | None:
+    """The rPPG burst plan, or None when the feature is off."""
+    if settings.pulse_frames <= 0:
+        return None
+    return {"frames": int(settings.pulse_frames), "durationMs": int(settings.pulse_duration_ms)}
 
 
 def pick_flash(count: int, rng: secrets.SystemRandom | None = None) -> list[str]:
@@ -59,7 +84,9 @@ def pick_flash(count: int, rng: secrets.SystemRandom | None = None) -> list[str]
     return [random.choice(names) for _ in range(count)]
 
 
-def create_session(db: Session, request: CreateSessionRequest) -> CreatedSession:
+def create_session(
+    db: Session, request: CreateSessionRequest, *, expressions: bool | None = None
+) -> CreatedSession:
     if request.purpose == "verify" and not request.personId:
         raise SessionError("PERSON_REQUIRED")
 
@@ -69,10 +96,14 @@ def create_session(db: Session, request: CreateSessionRequest) -> CreatedSession
         person_id=request.personId,
         display_name=request.displayName,
         nonce=secrets.token_urlsafe(32),
-        challenges=pick_challenges(request.tier),
+        challenges=pick_challenges(request.tier, expressions=expressions),
         flash=pick_flash(settings.flash_frames),
+        pulse=pick_pulse(),
         policy=policy.model_dump(),
-        client=request.client.model_dump() if request.client else None,
+        client={
+            **(request.client.model_dump() if request.client else {}),
+            **({"label": request.label} if request.label else {}),
+        } or None,
         expires_at=_now() + dt.timedelta(seconds=settings.session_ttl_seconds),
         state="issued",
     )
@@ -84,6 +115,7 @@ def create_session(db: Session, request: CreateSessionRequest) -> CreatedSession
         nonce=record.nonce,
         challenges=record.challenges,  # type: ignore[arg-type]
         flash=record.flash or [],  # type: ignore[arg-type]
+        pulse=PulsePlan(**record.pulse) if record.pulse else None,
         expiresAt=record.expires_at,
         policy=policy,
     )

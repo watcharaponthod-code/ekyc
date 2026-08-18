@@ -28,7 +28,16 @@ smoke test, not for production).
    (`init_db`); add Alembic when the schema starts changing.
 3. **Environment** (Railway → Variables). All optional — the image already sets
    `EKYC_BACKEND=onnx`:
+   - `EKYC_API_KEYS=key1,key2` — **set this.** Every route but `/v1/health`
+     then requires `X-API-Key` (or `Authorization: Bearer`). Empty = open.
    - `EKYC_FLASH_FRAMES=4` — turn on active-flash liveness (off by default).
+   - `EKYC_PULSE_FRAMES=90`, `EKYC_PULSE_DURATION_MS=8000` — rPPG pulse burst
+     (silicone-mask defence; off by default; `EKYC_PULSE_RULE=advisory|enforce`).
+   - `EKYC_EXPRESSION_CHALLENGES=false` — **required for the `onnx` backend**
+     (no blendshapes → cannot verify `openMouth`/`smile`; the server already
+     skips them when the backend says so, this is belt-and-braces).
+   - `EKYC_RETAIN_FRAMES=all` + `EKYC_FRAMES_DIR` — evaluation deployments only
+     (see `docs/pad-evaluation.md`).
    - `EKYC_LOG_FORMAT=json` — already set in the image.
    - `EKYC_SESSION_TTL_SECONDS`, threshold overrides (`EKYC_PAD_MIN`, …) as needed.
 4. `$PORT` is provided by Railway and honoured by the start command.

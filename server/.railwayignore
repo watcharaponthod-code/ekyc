@@ -1,0 +1,8 @@
+.venv
+tests
+retained_frames
+*.db
+__pycache__
+.pytest_cache
+*.log
+models

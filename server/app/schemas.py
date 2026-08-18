@@ -35,7 +35,7 @@ Number = Annotated[float, BeforeValidator(_finite)]
 Count = Annotated[int, BeforeValidator(lambda v: int(_finite(v)))]
 
 Purpose = Literal["enroll", "verify", "identify"]
-ChallengeName = Literal["center", "closeEyes", "turnLeft", "turnRight", "smile"]
+ChallengeName = Literal["center", "closeEyes", "turnLeft", "turnRight", "smile", "openMouth", "nod"]
 
 
 class ClientInfo(BaseModel):
@@ -53,6 +53,11 @@ class CreateSessionRequest(BaseModel):
     #: Risk tier. `reduced` issues a single challenge for step-up auth on an
     #: already-enrolled person; liveness still happens, it is just shorter.
     tier: Literal["full", "reduced"] = "full"
+    #: Free-text tag for PAD evaluation runs (`bona_fide`, `mask_silicone`, ...).
+    #: Stored with the session and written into the retained bundle so
+    #: `scripts/pad_eval.py` can group sessions by presentation type. Has no
+    #: effect on the decision.
+    label: str | None = Field(default=None, max_length=64)
 
 
 class SessionPolicy(BaseModel):
@@ -61,12 +66,21 @@ class SessionPolicy(BaseModel):
     totalTimeoutMs: int = 60_000
 
 
+class PulsePlan(BaseModel):
+    """Capture `frames` stills of the still, lit face over about `durationMs`."""
+
+    frames: int
+    durationMs: int
+
+
 class CreatedSession(BaseModel):
     sessionId: str
     nonce: str
     challenges: list[ChallengeName]
     #: Screen-flash colour names to show in order (empty when the feature is off).
     flash: list[str] = Field(default_factory=list)
+    #: rPPG burst to capture after the steps (absent when the feature is off).
+    pulse: PulsePlan | None = None
     expiresAt: dt.datetime
     policy: SessionPolicy
 
@@ -78,6 +92,7 @@ class ObservedSignal(BaseModel):
     leftEye: Number = 1.0
     rightEye: Number = 1.0
     smile: Number = 0.0
+    mouthOpen: Number = 0.0
 
 
 class StepObservation(BaseModel):
@@ -102,6 +117,12 @@ class Attestation(BaseModel):
     token: str | None = None
 
 
+class PulseCapture(BaseModel):
+    """Device timestamps (ms) of `pulse_0..pulse_{n-1}`, in key order."""
+
+    times: list[Count] = Field(default_factory=list)
+
+
 class EvidenceManifest(BaseModel):
     nonce: str
     startedAt: Count = 0
@@ -109,6 +130,7 @@ class EvidenceManifest(BaseModel):
     steps: list[StepObservation] = Field(default_factory=list)
     capture: CaptureInfo = Field(default_factory=CaptureInfo)
     attestation: Attestation | None = None
+    pulse: PulseCapture | None = None
 
 
 class MatchResult(BaseModel):

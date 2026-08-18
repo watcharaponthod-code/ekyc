@@ -155,6 +155,52 @@ def mean_face_color(image_bgr: np.ndarray, bbox: np.ndarray) -> tuple[float, flo
     return (r, g, b)
 
 
+#: Face Mesh indices outlining three skin patches that carry the strongest
+#: pulse signal and the least motion: forehead, left cheek, right cheek.
+#: (Eyes, brows, lips and nostrils are excluded on purpose — they move,
+#: blink and are not uniformly perfused.)
+SKIN_PATCHES: tuple[tuple[int, ...], ...] = (
+    # forehead: brow line up to the hairline
+    (10, 109, 67, 103, 54, 21, 71, 63, 105, 66, 107, 9, 336, 296, 334, 293, 301, 251, 284, 332, 297, 338),
+    # right cheek (image left in an unmirrored frame)
+    (117, 118, 101, 36, 206, 216, 212, 214, 192, 213, 147, 123),
+    # left cheek
+    (346, 347, 330, 266, 426, 436, 432, 434, 416, 433, 376, 352),
+)
+
+
+
+def skin_patch_colors(
+    image_bgr: np.ndarray, landmarks: np.ndarray | None, bbox: np.ndarray
+) -> list[tuple[float, float, float]]:
+    """Mean RGB (0..1) of each skin patch — the rPPG signal for one frame.
+
+    With landmarks, the forehead and both cheeks are rasterised as polygons and
+    each averaged separately, so the pulse detector can demand that the same
+    beat shows in all of them. Without landmarks a single patch — the central
+    50 % of the face box (mostly nose and cheeks) — is returned; it still
+    carries the pulse, just with more noise and no cross-patch check.
+    """
+    h, w = image_bgr.shape[:2]
+    if landmarks is not None and len(landmarks) >= 468:
+        colors: list[tuple[float, float, float]] = []
+        for patch in SKIN_PATCHES:
+            mask = np.zeros((h, w), dtype=np.uint8)
+            poly = np.round(landmarks[list(patch)][:, :2]).astype(np.int32)
+            cv2.fillPoly(mask, [poly], 255)
+            pixels = image_bgr[mask > 0]
+            if pixels.shape[0] < 50:
+                continue
+            b, g, r = (float(pixels[:, c].mean()) / 255.0 for c in range(3))
+            colors.append((r, g, b))
+        if colors:
+            return colors
+    x1, y1, x2, y2 = (float(v) for v in bbox)
+    bw, bh = x2 - x1, y2 - y1
+    inner = np.array([x1 + bw * 0.25, y1 + bh * 0.25, x2 - bw * 0.25, y2 - bh * 0.25])
+    return [mean_face_color(image_bgr, inner)]
+
+
 def face_ratio(image_bgr: np.ndarray, bbox: np.ndarray) -> float:
     width = image_bgr.shape[1]
     if width == 0:

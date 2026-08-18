@@ -94,12 +94,15 @@ def fetch_landmarker() -> None:
 
 def main() -> int:
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    only = set(sys.argv[1:])  # e.g. `onnx` to skip the MediaPipe bundle in a slim image
     # Needed by the default (deepface) backend.
-    fetch_landmarker()
+    if not only or "deepface" in only:
+        fetch_landmarker()
     # Needed only by the `onnx` backend; DeepFace downloads its own weights on
     # first use, into ~/.deepface/weights.
-    fetch_buffalo()
-    fetch_minifasnet()
+    if not only or "onnx" in only:
+        fetch_buffalo()
+        fetch_minifasnet()
 
     print("\nmodels in", MODELS_DIR)
     for path in sorted(MODELS_DIR.glob("*.onnx")):

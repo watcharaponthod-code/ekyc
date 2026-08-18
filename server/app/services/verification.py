@@ -19,10 +19,17 @@ import cv2
 import numpy as np
 
 from ..config import Thresholds
-from ..decision import DecisionInput, DecisionOutput, decide, flash_frame_keys, required_frame_keys
+from ..decision import (
+    DecisionInput,
+    DecisionOutput,
+    decide,
+    flash_frame_keys,
+    pulse_frame_keys,
+    required_frame_keys,
+)
 from ..logging_config import timed
 from ..ml.backend import FaceBackend, FrameFacts
-from ..ml.geometry import brightness, face_ratio, mean_face_color, sharpness
+from ..ml.geometry import brightness, face_ratio, mean_face_color, sharpness, skin_patch_colors
 from ..schemas import EvidenceManifest
 
 log = logging.getLogger("ekyc.verification")
@@ -73,6 +80,7 @@ def measure(backend: FaceBackend, key: str, image_bgr: np.ndarray) -> FrameFacts
     face = max(faces, key=lambda f: f.width)
     companions = sum(1 for f in faces if f.width >= face.width * COMPANION_WIDTH_RATIO)
     yaw, pitch, roll = backend.pose(image_bgr, face.kps)
+    mouth_open, smile = _expressions(backend, image_bgr, face.bbox)
 
     return FrameFacts(
         key=key,
@@ -88,7 +96,19 @@ def measure(backend: FaceBackend, key: str, image_bgr: np.ndarray) -> FrameFacts
         face_ratio=face_ratio(image_bgr, face.bbox),
         embedding=backend.embed(image_bgr, face.kps),
         face_rgb=mean_face_color(image_bgr, face.bbox),
+        mouth_open=mouth_open,
+        smile=smile,
+        skin_patches=skin_patch_colors(image_bgr, None, face.bbox),
     )
+
+
+def _expressions(backend: FaceBackend, image_bgr: np.ndarray, bbox: np.ndarray) -> tuple[float, float]:
+    """(mouth_open, smile) from a backend that measures them; (-1, -1) otherwise."""
+    fn = getattr(backend, "expressions", None)
+    if not callable(fn):
+        return -1.0, -1.0
+    mouth_open, smile = fn(image_bgr, bbox)
+    return float(mouth_open), float(smile)
 
 
 def _measure_single_pass(backend: FaceBackend, analyze, key: str, image_bgr: np.ndarray) -> FrameFacts:
@@ -109,6 +129,9 @@ def _measure_single_pass(backend: FaceBackend, analyze, key: str, image_bgr: np.
     with timed("measure.embed", frame=key):
         embedding = backend.embed(image_bgr, face.kps)
 
+    from ..ml.deepface_backend import expressions_from_blendshapes
+
+    mouth_open, smile = expressions_from_blendshapes(dict(face.blendshapes))
     facts = FrameFacts(
         key=key,
         face_count=companions,
@@ -125,6 +148,9 @@ def _measure_single_pass(backend: FaceBackend, analyze, key: str, image_bgr: np.
         blendshapes=dict(face.blendshapes),
         face_rgb=mean_face_color(image_bgr, face.bbox),
         planarity=getattr(face, "planarity", -1.0),
+        mouth_open=mouth_open,
+        smile=smile,
+        skin_patches=skin_patch_colors(image_bgr, getattr(face, "landmarks", None), face.bbox),
     )
     log.debug(
         "frame measured",
@@ -143,6 +169,25 @@ def _measure_single_pass(backend: FaceBackend, analyze, key: str, image_bgr: np.
     return facts
 
 
+def measure_skin(backend: FaceBackend, image_bgr: np.ndarray) -> list[tuple[float, float, float]] | None:
+    """The cheap per-frame measurement for the rPPG burst: find the face and
+    average its skin patches. No PAD, no embedding — a burst is dozens of
+    frames and the pulse only needs colour. ``None`` when no face was found.
+    """
+    analyze = getattr(backend, "analyze", None)
+    if callable(analyze):
+        faces = analyze(image_bgr)
+        if not faces:
+            return None
+        face = max(faces, key=lambda f: f.width)
+        return skin_patch_colors(image_bgr, getattr(face, "landmarks", None), face.bbox)
+    faces = backend.detect(image_bgr)
+    if not faces:
+        return None
+    face = max(faces, key=lambda f: f.width)
+    return skin_patch_colors(image_bgr, None, face.bbox)
+
+
 def verify_evidence(
     backend: FaceBackend,
     issued_challenges: list[str],
@@ -150,6 +195,7 @@ def verify_evidence(
     frames: dict[str, bytes],
     thresholds: Thresholds,
     flash_commanded: list[tuple[float, float, float]] | None = None,
+    pulse_requested: int = 0,
 ) -> tuple[DecisionOutput, dict[str, FrameFacts], dict[str, str]]:
     """Decode, measure, decide. Returns the decision, the facts and frame hashes."""
     hashes = {key: hashlib.sha256(raw).hexdigest() for key, raw in frames.items()}
@@ -167,12 +213,58 @@ def verify_evidence(
             return DecisionOutput(reasons=[error.code]), facts, hashes
         facts[key] = measure(backend, key, image)
 
+    pulse_samples: list[tuple[int, list[tuple[float, float, float]]]] = []
+    if pulse_requested > 0:
+        pulse_samples = _measure_pulse_burst(backend, manifest, frames, pulse_requested, facts)
+
     with timed("decide", frames=len(facts)) as span:
         output = decide(
-            DecisionInput(issued_challenges, manifest, facts, flash_commanded, hashes),
+            DecisionInput(
+                issued_challenges, manifest, facts, flash_commanded, hashes,
+                pulse_requested=pulse_requested, pulse_samples=pulse_samples,
+            ),
             thresholds,
         )
         span["decision"] = "pass" if output.passed else "fail"
         span["reasons"] = ",".join(output.reasons) or "-"
 
     return output, facts, hashes
+
+
+def _measure_pulse_burst(
+    backend: FaceBackend,
+    manifest: EvidenceManifest,
+    frames: dict[str, bytes],
+    pulse_requested: int,
+    facts: dict[str, FrameFacts],
+) -> list[tuple[int, list[tuple[float, float, float]]]]:
+    """Skin colour per pulse frame, paired with the device timestamp from the
+    manifest. Frames that fail to decode or show no face are skipped (the
+    decision counts what is left). The first and last usable frames also get a
+    full measurement so their embeddings join the identity-consistency check.
+    """
+    times = list(manifest.pulse.times) if manifest.pulse else []
+    keys = pulse_frame_keys(pulse_requested)
+    usable: list[tuple[str, int, np.ndarray]] = []
+    with timed("measure.pulse", frames=len(keys)) as span:
+        for index, key in enumerate(keys):
+            raw = frames.get(key)
+            if raw is None or index >= len(times):
+                continue
+            try:
+                image = decode_frame(raw)
+            except FrameError:
+                continue
+            usable.append((key, int(times[index]), image))
+        samples: list[tuple[int, list[tuple[float, float, float]]]] = []
+        with_face: list[tuple[str, np.ndarray]] = []
+        for key, t, image in usable:
+            colors = measure_skin(backend, image)
+            if colors:
+                samples.append((t, colors))
+                with_face.append((key, image))
+        span["usable"] = len(samples)
+    anchors = (with_face[0], with_face[-1]) if len(with_face) > 1 else with_face[:1]
+    for key, image in anchors:
+        facts[key] = measure(backend, key, image)
+    return samples

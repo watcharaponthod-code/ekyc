@@ -86,6 +86,34 @@ class Thresholds(BaseSettings):
     #: than an uncalibrated image statistic.
     eye_rule: str = Field(default="enforce", pattern="^(advisory|enforce)$")
 
+    # --- expressions (3-D / rigid mask defence) ------------------------------
+    #: `openMouth`: MediaPipe `jawOpen` on the challenge frame must reach this
+    #: absolute level *and* rise by `mouth_open_delta_min` over the subject's
+    #: own neutral frame. jawOpen reads ~0.0-0.1 with the mouth shut and
+    #: 0.5-0.9 with it clearly open, so both bounds sit in the empty middle.
+    #: A rigid mask (3-D print, resin, cheap latex) cannot open its mouth at
+    #: all; a flexible silicone mask opens far less than the wearer's jaw.
+    mouth_open_min: float = 0.35
+    mouth_open_delta_min: float = 0.20
+    #: `smile`: mean of `mouthSmileLeft/Right`, same two-part rule.
+    smile_min: float = 0.45
+    smile_delta_min: float = 0.25
+    #: `enforce` fails a session whose expression challenge was not met (or
+    #: could not be measured); `advisory` records the numbers only.
+    expression_rule: str = Field(default="enforce", pattern="^(advisory|enforce)$")
+
+    # --- pulse / rPPG (silicone-mask defence) -------------------------------
+    #: Min pulse score (see pulse.py: logistic of spectral prominence, 0.5 at
+    #: 7 dB). Only checked when the session issued a pulse burst.
+    pulse_min: float = 0.5
+    #: Advisory until calibrated on real phones — synthetic separation is clean
+    #: only when the pulse amplitude is at least ~2x the per-frame colour noise.
+    pulse_rule: str = Field(default="advisory", pattern="^(advisory|enforce)$")
+    #: A burst with fewer usable frames or a shorter span than this is
+    #: PULSE_FRAME_MISSING — the client did not deliver what was asked.
+    pulse_min_frames: int = 24
+    pulse_min_span_ms: int = 3_000
+
     # --- identity ------------------------------------------------------------
     #: Min pairwise cosine across the evidence frames. This is a *swap*
     #: detector, not a match: it must survive a real head turn.
@@ -141,6 +169,21 @@ class Settings(BaseSettings):
     #: full-screen colour the device shows while capturing; the server checks
     #: the face reflected the commanded sequence. Server-controlled on purpose.
     flash_frames: int = 0
+    #: Issue expression challenges (`openMouth`, `smile`) when the backend can
+    #: verify them. Off is only sensible for the `onnx` backend, which cannot.
+    expression_challenges: bool = True
+    #: Full-tier sessions always include `openMouth` (the rigid-mask killer),
+    #: with the remaining slots drawn at random. Reduced tier stays random.
+    always_open_mouth: bool = True
+    #: rPPG pulse burst: how many frames the device should capture while the
+    #: user holds still (0 = feature off), over roughly `pulse_duration_ms`.
+    #: The server checks the skin colour carries a heartbeat.
+    pulse_frames: int = 0
+    pulse_duration_ms: int = 7_000
+    #: Comma-separated API keys. When non-empty every /v1 route except
+    #: /v1/health requires `X-API-Key` (or `Authorization: Bearer`) to match one
+    #: of them. Empty = open, for local development only.
+    api_keys: str = ""
     #: `none` keeps no images at all. `on_fail` is useful while tuning, and is a
     #: privacy trade-off you must justify before enabling in production.
     retain_frames: str = Field(default="none", pattern="^(none|on_fail|all)$")
@@ -153,6 +196,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = Field(default="text", pattern="^(text|json)$")
     version: str = "0.1.0"
+
+    def api_key_set(self) -> frozenset[str]:
+        return frozenset(k.strip() for k in self.api_keys.split(",") if k.strip())
 
     @field_validator("database_url")
     @classmethod

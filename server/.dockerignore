@@ -11,3 +11,4 @@ models/*
 !models/det_10g.onnx
 !models/w600k_r50.onnx
 !models/minifasnet_v2.onnx
+.venv

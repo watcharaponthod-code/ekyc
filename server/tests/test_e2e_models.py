@@ -158,6 +158,12 @@ def relaxed_pad(monkeypatch):
         # frontal shot. Its accuracy is covered in test_deepface_backend.py.
         Thresholds(pad_min=0.0, sharpness_min=0.0, eye_rule="advisory"),
     )
+    # Expression challenges (`openMouth`/`smile`) need a live subject who can
+    # do them; press photographs cannot. Keep them out of the issued pool so
+    # these tests stay about the pipeline, not the mask defence.
+    from app.config import settings as cfg
+
+    monkeypatch.setattr(cfg, "expression_challenges", False)
 
 
 @pytest.fixture

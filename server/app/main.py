@@ -7,12 +7,13 @@ the judgement lives in `decision.py` and the `services` package.
 from __future__ import annotations
 
 import json
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from .config import settings, thresholds
@@ -35,6 +36,7 @@ from .schemas import (
 from .services import persons as persons_service
 from .services import sessions as sessions_service
 from .services.sessions import SessionError
+from .services.retention import retain_evidence
 from .services.verification import verify_evidence
 
 @asynccontextmanager
@@ -71,6 +73,31 @@ async def _log_validation_error(request: Request, exc: RequestValidationError) -
     return JSONResponse(status_code=422, content={"detail": exc.errors()})
 
 
+def require_api_key(
+    x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
+    authorization: Annotated[str | None, Header()] = None,
+) -> None:
+    """Shared-secret gate for every route but health.
+
+    Off when `EKYC_API_KEYS` is empty (local development). Accepts the key in
+    `X-API-Key` or as `Authorization: Bearer <key>`; comparison is constant
+    time. This authenticates the *app*, not the person — liveness does that.
+    """
+    keys = settings.api_key_set()
+    if not keys:
+        return
+    presented = x_api_key
+    if presented is None and authorization and authorization.lower().startswith("bearer "):
+        presented = authorization[7:].strip()
+    if presented is None:
+        raise HTTPException(status_code=401, detail="API_KEY_REQUIRED")
+    if not any(secrets.compare_digest(presented, key) for key in keys):
+        raise HTTPException(status_code=403, detail="API_KEY_INVALID")
+
+
+ApiKey = Depends(require_api_key)
+
+
 @lru_cache(maxsize=1)
 def get_backend() -> FaceBackend:
     """Load the vision stack once, per `EKYC_BACKEND`."""
@@ -98,12 +125,13 @@ def health() -> HealthOut:
         return HealthOut(status=f"degraded: {error}", version=settings.version, backend="none", models={})
 
 
-@app.post("/v1/sessions", response_model=CreatedSession, status_code=201)
+@app.post("/v1/sessions", response_model=CreatedSession, status_code=201, dependencies=[ApiKey])
 def create_session(
     request: CreateSessionRequest, db: Annotated[Session, Depends(get_db)]
 ) -> CreatedSession:
     try:
-        created = sessions_service.create_session(db, request)
+        expressions = bool(getattr(get_backend(), "supports_expressions", False))
+        created = sessions_service.create_session(db, request, expressions=expressions)
     except SessionError as error:
         log_event("session.rejected", reason=error.code, purpose=request.purpose)
         raise HTTPException(status_code=400, detail=error.code) from error
@@ -119,7 +147,7 @@ def create_session(
     return created
 
 
-@app.post("/v1/sessions/{session_id}/submit", response_model=DecisionResponse)
+@app.post("/v1/sessions/{session_id}/submit", response_model=DecisionResponse, dependencies=[ApiKey])
 async def submit_evidence(
     session_id: str,
     manifest: Annotated[str, Form()],
@@ -152,8 +180,9 @@ async def submit_evidence(
     }
 
     flash_commanded = [FLASH_PALETTE[name] for name in (record.flash or []) if name in FLASH_PALETTE]
+    pulse_requested = int((record.pulse or {}).get("frames", 0))
     output, facts, hashes = verify_evidence(
-        get_backend(), issued, parsed, uploaded, thresholds, flash_commanded
+        get_backend(), issued, parsed, uploaded, thresholds, flash_commanded, pulse_requested
     )
 
     response = DecisionResponse(
@@ -183,6 +212,7 @@ async def submit_evidence(
     )
 
     record.state = response.decision
+    retain_evidence(record, uploaded, manifest, response)
     db.add(
         AuditEvent(
             session_id=record.id,
@@ -224,7 +254,7 @@ def _apply_outcome(db: Session, record, embedding, response: DecisionResponse) -
     response.match = MatchResult(ok=True, score=round(score, 4))
 
 
-@app.post("/v1/client-log", status_code=204)
+@app.post("/v1/client-log", status_code=204, dependencies=[ApiKey])
 def client_log(entry: dict) -> None:
     """Diagnostics from the phone.
 
@@ -246,7 +276,7 @@ def client_log(entry: dict) -> None:
     log_event("client", **{k: str(v)[:500] for k, v in allowed.items() if v is not None})
 
 
-@app.get("/v1/persons", response_model=list[PersonOut])
+@app.get("/v1/persons", response_model=list[PersonOut], dependencies=[ApiKey])
 def list_persons(db: Annotated[Session, Depends(get_db)]) -> list[PersonOut]:
     return [
         PersonOut(
@@ -259,7 +289,7 @@ def list_persons(db: Annotated[Session, Depends(get_db)]) -> list[PersonOut]:
     ]
 
 
-@app.delete("/v1/persons/{person_id}", status_code=204)
+@app.delete("/v1/persons/{person_id}", status_code=204, dependencies=[ApiKey])
 def delete_person(person_id: str, db: Annotated[Session, Depends(get_db)]) -> None:
     try:
         persons_service.delete_person(db, person_id)

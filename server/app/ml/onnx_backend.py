@@ -66,6 +66,8 @@ def _session(path: Path) -> ort.InferenceSession:
 
 class OnnxFaceBackend:
     name = "onnx"
+    #: Five points cannot measure mouth opening or smile.
+    supports_expressions = False
 
     def __init__(self, models_dir: Path) -> None:
         self.models_dir = models_dir

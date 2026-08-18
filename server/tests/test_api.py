@@ -296,3 +296,198 @@ class TestActiveFlashApi:
         response = _submit_with_flash(client, session, jpeg_bytes, real=False)
         assert response.json()["decision"] == "fail"
         assert "FLASH_SPOOF" in response.json()["reasons"], response.json()
+
+
+# --- expression challenges, pulse burst, API key, retention -----------------
+
+
+class TestExpressionIssuance:
+    def test_full_tier_always_includes_open_mouth_when_the_backend_can_verify_it(self, client):
+        for _ in range(15):
+            session = make_session(client)
+            assert "openMouth" in session["challenges"], session["challenges"]
+            assert len(session["challenges"]) == 3
+
+    def test_open_mouth_position_and_companions_vary(self, client):
+        orders = {tuple(make_session(client)["challenges"]) for _ in range(30)}
+        assert len(orders) > 3
+        assert len({o.index("openMouth") for o in orders}) > 1
+
+    def test_a_backend_without_blendshapes_never_gets_expression_challenges(self, client):
+        client.backend.supports_expressions = False
+        try:
+            for _ in range(15):
+                names = make_session(client)["challenges"]
+                assert not {"openMouth", "smile"} & set(names), names
+        finally:
+            client.backend.supports_expressions = True
+
+    def test_the_feature_can_be_switched_off(self, client, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "expression_challenges", False)
+        for _ in range(10):
+            names = make_session(client)["challenges"]
+            assert not {"openMouth", "smile"} & set(names), names
+
+    def test_the_fake_backend_answers_open_mouth_and_the_gate_reads_it(self, client, jpeg_bytes, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "challenges_full", 1)
+        session = make_session(client)
+        assert session["challenges"] == ["openMouth"]
+        # scripted: neutral and challenge frames read the same shut mouth -> not open
+        response = submit(client, session, jpeg_bytes)
+        body = response.json()
+        assert "MOUTH_NOT_OPEN" in body["reasons"], body
+        assert body["scores"]["steps"]["openMouth"]["ok"] is False
+
+
+def _pulse_files_and_times(session, *, beating: bool, seed: int = 0):
+    """Frames whose whole-image colour carries (or lacks) a heartbeat: the fake
+    backend has no landmarks, so `skin_patch_colors` reads the face-box centre."""
+    import numpy as _np
+
+    rng = _np.random.default_rng(seed)
+    plan = session["pulse"]
+    n = plan["frames"]
+    fs = n / (plan["durationMs"] / 1000.0)
+    times = [int(round(i * 1000.0 / fs)) for i in range(n)]
+    base = _np.array([0.62, 0.45, 0.38])
+    files = []
+    for i, t in enumerate(times):
+        wave = _np.sin(2 * _np.pi * 1.2 * t / 1000.0) if beating else 0.0
+        rgb = base + wave * _np.array([0.006, 0.012, 0.005]) + rng.normal(0, 0.001, 3)
+        files.append(("frames", (f"pulse_{i}.jpg", _solid_jpeg(tuple(rgb)), "image/jpeg")))
+    return files, times
+
+
+def _submit_with_pulse(client, session, jpeg, *, beating: bool):
+    keys = ["neutral", *session["challenges"]]
+    files = [("frames", (f"{k}.jpg", jpeg(seed=i), "image/jpeg")) for i, k in enumerate(keys)]
+    pulse_files, times = _pulse_files_and_times(session, beating=beating)
+    manifest = manifest_for(session)
+    manifest["pulse"] = {"times": times}
+    return client.post(
+        f"/v1/sessions/{session['sessionId']}/submit",
+        data={"manifest": json.dumps(manifest)},
+        files=files + pulse_files,
+    )
+
+
+class TestPulseApi:
+    def test_pulse_is_off_by_default(self, client):
+        assert make_session(client)["pulse"] is None
+
+    def test_the_plan_is_issued_when_enabled(self, client, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "pulse_frames", 60)
+        plan = make_session(client)["pulse"]
+        assert plan == {"frames": 60, "durationMs": cfg.pulse_duration_ms}
+
+    def test_a_beating_burst_is_measured_and_clears_the_gate(self, client, jpeg_bytes, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "pulse_frames", 72)
+        session = make_session(client)
+        response = _submit_with_pulse(client, session, jpeg_bytes, beating=True)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["scores"]["pulse"]["ok"] is True, body["scores"]["pulse"]
+        assert body["scores"]["pulse"]["frames"] == 72
+        assert "PULSE_ABSENT" not in body["reasons"]
+
+    def test_a_pulseless_burst_is_recorded_and_fails_under_enforce(self, client, jpeg_bytes, monkeypatch):
+        import app.main as main_module
+        from app.config import Thresholds
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "pulse_frames", 72)
+        monkeypatch.setattr(main_module, "thresholds", Thresholds(pulse_rule="enforce"))
+        session = make_session(client)
+        response = _submit_with_pulse(client, session, jpeg_bytes, beating=False)
+        body = response.json()
+        assert body["scores"]["pulse"]["ok"] is False, body["scores"]["pulse"]
+        assert "PULSE_ABSENT" in body["reasons"], body
+
+    def test_a_missing_burst_is_a_protocol_failure(self, client, jpeg_bytes, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "pulse_frames", 72)
+        session = make_session(client)
+        response = submit(client, session, jpeg_bytes)  # no pulse frames at all
+        assert "PULSE_FRAME_MISSING" in response.json()["reasons"]
+
+
+class TestApiKey:
+    def test_open_when_no_keys_are_configured(self, client):
+        assert client.get("/v1/persons").status_code == 200
+
+    def test_a_missing_key_is_401_and_a_wrong_key_is_403(self, client, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "api_keys", "k-one, k-two")
+        assert client.get("/v1/persons").status_code == 401
+        assert client.get("/v1/persons", headers={"X-API-Key": "nope"}).status_code == 403
+        assert client.post("/v1/sessions", json={"purpose": "enroll"}).status_code == 401
+
+    def test_either_configured_key_in_either_header_form_works(self, client, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "api_keys", "k-one, k-two")
+        assert client.get("/v1/persons", headers={"X-API-Key": "k-two"}).status_code == 200
+        assert client.get("/v1/persons", headers={"Authorization": "Bearer k-one"}).status_code == 200
+        created = client.post("/v1/sessions", json={"purpose": "enroll"}, headers={"X-API-Key": "k-one"})
+        assert created.status_code == 201
+
+    def test_health_stays_open(self, client, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "api_keys", "k-one")
+        assert client.get("/v1/health").status_code == 200
+
+
+class TestRetention:
+    def test_nothing_is_written_by_default(self, client, jpeg_bytes, tmp_path, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "frames_dir", tmp_path / "kept")
+        session = make_session(client)
+        submit(client, session, jpeg_bytes)
+        assert not (tmp_path / "kept").exists()
+
+    def test_all_keeps_frames_manifest_and_decision_under_the_label(self, client, jpeg_bytes, tmp_path, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "frames_dir", tmp_path / "kept")
+        monkeypatch.setattr(cfg, "retain_frames", "all")
+        session = make_session(client, label="mask_silicone")
+        submit(client, session, jpeg_bytes)
+        bundle = tmp_path / "kept" / "mask_silicone" / session["sessionId"]
+        assert (bundle / "neutral.jpg").is_file()
+        assert (bundle / "manifest.json").is_file()
+        decision = json.loads((bundle / "decision.json").read_text())
+        assert decision["label"] == "mask_silicone"
+        assert decision["decision"] in ("pass", "fail")
+        assert decision["challenges"] == session["challenges"]
+
+    def test_on_fail_keeps_only_failures(self, client, jpeg_bytes, tmp_path, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "frames_dir", tmp_path / "kept")
+        monkeypatch.setattr(cfg, "retain_frames", "on_fail")
+        session = make_session(client)
+        body = submit(client, session, jpeg_bytes).json()
+        assert body["decision"] == "fail"  # fake backend never turns its head
+        assert (tmp_path / "kept" / "unlabelled" / session["sessionId"] / "decision.json").is_file()
+
+    def test_labels_are_sanitised_for_the_filesystem(self, client, jpeg_bytes, tmp_path, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "frames_dir", tmp_path / "kept")
+        monkeypatch.setattr(cfg, "retain_frames", "all")
+        session = make_session(client, label="../evil label")
+        submit(client, session, jpeg_bytes)
+        assert not (tmp_path / "evil label").exists()
+        assert any((tmp_path / "kept").iterdir())

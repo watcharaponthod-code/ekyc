@@ -57,6 +57,9 @@ INTERESTING_BLENDSHAPES = (
 
 class DeepFaceMediaPipeBackend:
     name = "deepface+mediapipe"
+    #: Blendshapes give `jawOpen` and `mouthSmile*`, so the server can verify
+    #: an open-mouth or smile challenge — the expression a rigid mask cannot make.
+    supports_expressions = True
 
     def __init__(self, models_dir: Path) -> None:
         self.models_dir = models_dir
@@ -280,6 +283,16 @@ class DeepFaceMediaPipeBackend:
         # live-probability axis.
         return float(score) if bool(is_real) else 1.0 - float(score)
 
+    # -- expressions ---------------------------------------------------------
+
+    def expressions(self, image_bgr: np.ndarray, bbox: np.ndarray) -> tuple[float, float]:
+        """(mouth_open, smile), each 0..1, from the blendshapes of the face
+        nearest ``bbox``. -1 for both when blendshapes are unavailable."""
+        faces = self.analyze(image_bgr)
+        if not faces:
+            return -1.0, -1.0
+        return expressions_from_blendshapes(_closest_to(faces, bbox).blendshapes)
+
     # -- eyes ----------------------------------------------------------------
 
     def eye_openness(self, image_bgr: np.ndarray, bbox: np.ndarray, kps: np.ndarray) -> float:
@@ -295,6 +308,20 @@ class DeepFaceMediaPipeBackend:
             return 0.0
         face = _closest_to(faces, bbox)
         return face.ear
+
+
+def expressions_from_blendshapes(blendshapes: dict[str, float]) -> tuple[float, float]:
+    """(mouth_open, smile) from MediaPipe blendshape scores; (-1, -1) if absent."""
+    if not blendshapes:
+        return -1.0, -1.0
+    mouth_open = float(blendshapes.get("jawOpen", -1.0))
+    left = blendshapes.get("mouthSmileLeft")
+    right = blendshapes.get("mouthSmileRight")
+    if left is None and right is None:
+        smile = -1.0
+    else:
+        smile = float(np.mean([v for v in (left, right) if v is not None]))
+    return mouth_open, smile
 
 
 def _closest_to(faces: list[FaceGeometry], bbox: np.ndarray) -> FaceGeometry:

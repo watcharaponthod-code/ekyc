@@ -30,6 +30,9 @@ def facts(key: str, **overrides) -> FrameFacts:
         brightness=0.5,
         face_ratio=0.4,
         embedding=ALICE,
+        # a shut, unsmiling neutral — what MediaPipe reads on a resting face
+        mouth_open=0.05,
+        smile=0.05,
     )
     base.update(overrides)
     return FrameFacts(**base)  # type: ignore[arg-type]
@@ -56,6 +59,10 @@ def good_case(names=("closeEyes", "turnLeft", "turnRight")):
             frames[name] = facts(name, yaw=30.0)
         elif name == "closeEyes":
             frames[name] = facts(name, eye_openness=0.08)
+        elif name == "openMouth":
+            frames[name] = facts(name, mouth_open=0.7)
+        elif name == "smile":
+            frames[name] = facts(name, smile=0.8)
         else:
             frames[name] = facts(name)
     return DecisionInput(names, manifest(names), frames)
@@ -394,3 +401,146 @@ class TestPlanarity:
 
     def test_unmeasured_planarity_is_skipped(self):
         assert "planarity" not in decide(good_case(), TH).scores
+
+
+# --- expression challenges: the rigid-mask defence ---------------------------
+
+
+class TestExpressions:
+    def test_an_open_mouth_passes(self):
+        out = decide(good_case(["openMouth", "turnLeft", "turnRight"]), TH)
+        assert out.passed, out.reasons
+        assert out.scores["steps"]["openMouth"]["ok"] is True
+
+    def test_a_smile_passes(self):
+        out = decide(good_case(["smile", "turnLeft", "turnRight"]), TH)
+        assert out.passed, out.reasons
+
+    def test_a_mask_that_cannot_open_its_mouth_fails(self):
+        data = good_case(["openMouth", "turnLeft", "turnRight"])
+        data.facts["openMouth"] = facts("openMouth", mouth_open=0.08)  # rigid: jaw never moves
+        out = decide(data, TH)
+        assert "MOUTH_NOT_OPEN" in out.reasons
+        assert out.scores["steps"]["openMouth"]["ok"] is False
+
+    def test_a_permanently_gaping_mask_does_not_pass_on_delta_alone(self):
+        # The neutral frame already gapes (0.5) and the "open" frame gapes a
+        # little more (0.72): the absolute bar is met but the rise is small.
+        data = good_case(["openMouth"])
+        data.facts["neutral"] = facts("neutral", mouth_open=0.55)
+        data.facts["openMouth"] = facts("openMouth", mouth_open=0.7)
+        assert "MOUTH_NOT_OPEN" in decide(data, TH).reasons
+
+    def test_a_small_rise_from_shut_is_not_enough_either(self):
+        data = good_case(["openMouth"])
+        data.facts["openMouth"] = facts("openMouth", mouth_open=0.3)  # rose 0.25 but under the bar
+        assert "MOUTH_NOT_OPEN" in decide(data, TH).reasons
+
+    def test_no_smile_fails(self):
+        data = good_case(["smile"])
+        data.facts["smile"] = facts("smile", smile=0.1)
+        assert "SMILE_ABSENT" in decide(data, TH).reasons
+
+    def test_an_unmeasurable_expression_fails_closed(self):
+        data = good_case(["openMouth"])
+        data.facts["openMouth"] = facts("openMouth", mouth_open=-1.0)
+        assert "EXPRESSION_UNVERIFIABLE" in decide(data, TH).reasons
+
+    def test_the_rule_can_be_downgraded_to_advisory(self):
+        data = good_case(["openMouth"])
+        data.facts["openMouth"] = facts("openMouth", mouth_open=0.08)
+        out = decide(data, Thresholds(expression_rule="advisory"))
+        assert out.passed, out.reasons
+        assert out.scores["steps"]["openMouth"]["ok"] is False
+
+
+# --- PAD is judged on the challenge frames only ------------------------------
+
+
+class TestPadScope:
+    def test_a_low_pad_on_a_flash_frame_does_not_fail_the_session(self):
+        data = with_flash(good_case(), [_reflected(c) for c in FLASH_CMD])
+        data.facts["flash_0"] = facts("flash_0", pad=0.1, face_rgb=data.facts["flash_0"].face_rgb)
+        out = decide(data, TH)
+        assert "PAD_LOW" not in out.reasons, out.reasons
+        assert out.scores["pad"] == pytest.approx(0.95)
+
+    def test_a_low_pad_on_a_challenge_frame_still_fails(self):
+        data = good_case()
+        data.facts["turnLeft"] = facts("turnLeft", yaw=-30.0, pad=0.1)
+        assert "PAD_LOW" in decide(data, TH).reasons
+
+
+# --- rPPG pulse: the silicone-mask defence ------------------------------------
+
+from app.pulse import MIN_FRAMES as PULSE_MIN_FRAMES  # noqa: E402
+
+
+def _pulse_samples(rng, *, beating: bool, fs=12, secs=7, amp=0.002, noise=0.001):
+    n = int(fs * secs)
+    t = np.cumsum(np.full(n, 1000.0 / fs) * (1 + rng.normal(0, 0.02, n)))
+    t = (t - t[0]).astype(int)
+    base = np.array([0.62, 0.45, 0.38])
+    pulse = np.sin(2 * np.pi * 1.2 * t / 1000.0) if beating else np.zeros(n)
+    samples = []
+    for i in range(n):
+        patches = []
+        for _ in range(3):
+            rgb = base + pulse[i] * np.array([amp * 0.5, amp, amp * 0.4]) + rng.normal(0, noise, 3)
+            patches.append(tuple(float(v) for v in rgb))
+        samples.append((int(t[i]), patches))
+    return samples
+
+
+def with_pulse(data: DecisionInput, samples, requested: int = 60) -> DecisionInput:
+    data.pulse_requested = requested
+    data.pulse_samples = samples
+    return data
+
+
+class TestPulse:
+    def test_no_plan_no_check(self):
+        out = decide(good_case(), TH)
+        assert "pulse" not in out.scores
+
+    def test_a_beating_face_clears_the_gate(self):
+        rng = np.random.default_rng(11)
+        out = decide(with_pulse(good_case(), _pulse_samples(rng, beating=True)), TH)
+        assert out.passed, out.reasons
+        assert out.scores["pulse"]["ok"] is True
+        assert 60 < out.scores["pulse"]["bpm"] < 84
+
+    def test_a_pulseless_mask_is_recorded_but_advisory_by_default(self):
+        rng = np.random.default_rng(12)
+        out = decide(with_pulse(good_case(), _pulse_samples(rng, beating=False)), TH)
+        assert out.scores["pulse"]["ok"] is False
+        assert out.scores["pulse"]["rule"] == "advisory"
+        assert "PULSE_ABSENT" not in out.reasons
+
+    def test_enforce_rejects_a_pulseless_mask(self):
+        rng = np.random.default_rng(13)
+        out = decide(
+            with_pulse(good_case(), _pulse_samples(rng, beating=False)),
+            Thresholds(pulse_rule="enforce"),
+        )
+        assert "PULSE_ABSENT" in out.reasons
+
+    def test_enforce_passes_a_beating_face(self):
+        rng = np.random.default_rng(14)
+        out = decide(
+            with_pulse(good_case(), _pulse_samples(rng, beating=True)),
+            Thresholds(pulse_rule="enforce"),
+        )
+        assert out.passed, out.reasons
+
+    def test_a_burst_that_came_back_too_short_is_a_protocol_failure(self):
+        rng = np.random.default_rng(15)
+        samples = _pulse_samples(rng, beating=True)[: PULSE_MIN_FRAMES - 4]
+        out = decide(with_pulse(good_case(), samples), TH)
+        assert "PULSE_FRAME_MISSING" in out.reasons
+
+    def test_pulse_anchor_frames_join_the_identity_check(self):
+        rng = np.random.default_rng(16)
+        data = with_pulse(good_case(), _pulse_samples(rng, beating=True))
+        data.facts["pulse_0"] = facts("pulse_0", embedding=BOB)  # someone else's heartbeat
+        assert "IDENTITY_INCONSISTENT" in decide(data, TH).reasons
