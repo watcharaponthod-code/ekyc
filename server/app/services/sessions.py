@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from ..config import settings
 from ..decision import VERIFIABLE_CHALLENGES
+from ..flash import FLASH_PALETTE
 from ..models import VerificationSession
 from ..schemas import CreateSessionRequest, CreatedSession, SessionPolicy
 
@@ -43,6 +44,21 @@ def pick_challenges(tier: str, rng: secrets.SystemRandom | None = None) -> list[
     return random.sample(pool, count)
 
 
+def pick_flash(count: int, rng: secrets.SystemRandom | None = None) -> list[str]:
+    """A random screen-flash colour sequence. Order and identity are both
+    random per session, so a recording of one session's flashes cannot satisfy
+    another. A permutation while it fits the palette keeps every colour channel
+    varying, which is what the correlation check needs.
+    """
+    if count <= 0:
+        return []
+    random = rng or secrets.SystemRandom()
+    names = list(FLASH_PALETTE)
+    if count <= len(names):
+        return random.sample(names, count)
+    return [random.choice(names) for _ in range(count)]
+
+
 def create_session(db: Session, request: CreateSessionRequest) -> CreatedSession:
     if request.purpose == "verify" and not request.personId:
         raise SessionError("PERSON_REQUIRED")
@@ -54,6 +70,7 @@ def create_session(db: Session, request: CreateSessionRequest) -> CreatedSession
         display_name=request.displayName,
         nonce=secrets.token_urlsafe(32),
         challenges=pick_challenges(request.tier),
+        flash=pick_flash(settings.flash_frames),
         policy=policy.model_dump(),
         client=request.client.model_dump() if request.client else None,
         expires_at=_now() + dt.timedelta(seconds=settings.session_ttl_seconds),
@@ -66,6 +83,7 @@ def create_session(db: Session, request: CreateSessionRequest) -> CreatedSession
         sessionId=record.id,
         nonce=record.nonce,
         challenges=record.challenges,  # type: ignore[arg-type]
+        flash=record.flash or [],  # type: ignore[arg-type]
         expiresAt=record.expires_at,
         policy=policy,
     )

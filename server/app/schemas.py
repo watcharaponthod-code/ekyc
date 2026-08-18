@@ -65,6 +65,8 @@ class CreatedSession(BaseModel):
     sessionId: str
     nonce: str
     challenges: list[ChallengeName]
+    #: Screen-flash colour names to show in order (empty when the feature is off).
+    flash: list[str] = Field(default_factory=list)
     expiresAt: dt.datetime
     policy: SessionPolicy
 

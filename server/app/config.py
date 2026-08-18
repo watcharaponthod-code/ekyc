@@ -102,6 +102,10 @@ class Settings(BaseSettings):
     #: How many challenges (besides the implicit `center`) each risk tier issues.
     challenges_full: int = 3
     challenges_reduced: int = 1
+    #: How many active-flash frames to issue (0 = feature off). Each is a
+    #: full-screen colour the device shows while capturing; the server checks
+    #: the face reflected the commanded sequence. Server-controlled on purpose.
+    flash_frames: int = 0
     #: `none` keeps no images at all. `on_fail` is useful while tuning, and is a
     #: privacy trade-off you must justify before enabling in production.
     retain_frames: str = Field(default="none", pattern="^(none|on_fail|all)$")

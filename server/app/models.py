@@ -79,6 +79,8 @@ class VerificationSession(Base):
     display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     nonce: Mapped[str] = mapped_column(String(64))
     challenges: Mapped[list[str]] = mapped_column(JSON)
+    #: Active-flash colour sequence issued for this session (names), or None.
+    flash: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     policy: Mapped[dict[str, Any]] = mapped_column(JSON)
     client: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=_now)

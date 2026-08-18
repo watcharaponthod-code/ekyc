@@ -222,3 +222,77 @@ class TestClientLog:
     def test_it_ignores_keys_it_does_not_know(self, client):
         response = client.post("/v1/client-log", json={"message": "x", "embedding": [1, 2, 3]})
         assert response.status_code == 204
+
+
+# --- active-flash liveness, end to end through the API ----------------------
+import io as _io  # noqa: E402
+from PIL import Image as _Image  # noqa: E402
+from app.flash import FLASH_PALETTE as _PALETTE  # noqa: E402
+
+
+def _reflected(color):
+    """Mean face colour a real face shows under this flash colour."""
+    amb, alb, k = (0.2, 0.18, 0.16), (0.9, 0.6, 0.5), 0.35
+    return tuple(min(1.0, a + al * k * c) for a, al, c in zip(amb, alb, color))
+
+
+def _solid_jpeg(rgb):
+    r, g, b = (int(round(v * 255)) for v in rgb)
+    buf = _io.BytesIO()
+    _Image.new("RGB", (640, 640), (r, g, b)).save(buf, "JPEG", quality=95)
+    return buf.getvalue()
+
+
+def _flash_files(session, *, real):
+    files = []
+    for i, name in enumerate(session["flash"]):
+        rgb = _reflected(_PALETTE[name]) if real else (0.5, 0.4, 0.35)
+        files.append(("frames", (f"flash_{i}.jpg", _solid_jpeg(rgb), "image/jpeg")))
+    return files
+
+
+def _submit_with_flash(client, session, jpeg, *, real):
+    keys = ["neutral", *session["challenges"]]
+    files = [("frames", (f"{k}.jpg", jpeg(seed=i), "image/jpeg")) for i, k in enumerate(keys)]
+    files += _flash_files(session, real=real)
+    return client.post(
+        f"/v1/sessions/{session['sessionId']}/submit",
+        data={"manifest": json.dumps(manifest_for(session))},
+        files=files,
+    )
+
+
+class TestActiveFlashApi:
+    def test_flash_is_off_by_default(self, client):
+        assert make_session(client)["flash"] == []
+
+    def test_the_plan_is_a_random_colour_sequence_when_enabled(self, client, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "flash_frames", 4)
+        plans = {tuple(make_session(client)["flash"]) for _ in range(20)}
+        assert all(len(p) == 4 for p in plans)
+        assert len(plans) > 1, "flash order must be randomised per session"
+
+    def test_a_face_that_reflects_the_flash_clears_the_flash_gate(self, client, jpeg_bytes, monkeypatch):
+        # The fake backend reports a fixed pose, so a full pass is covered by the
+        # decision-level test; here we assert the *flash* gate specifically: the
+        # reflected frames score above threshold and raise no FLASH_SPOOF.
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "flash_frames", 4)
+        session = make_session(client)
+        response = _submit_with_flash(client, session, jpeg_bytes, real=True)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert "FLASH_SPOOF" not in body["reasons"], body
+        assert body["scores"]["flash"] > 0.5, body
+
+    def test_a_photo_held_under_the_flash_is_rejected(self, client, jpeg_bytes, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "flash_frames", 4)
+        session = make_session(client)
+        response = _submit_with_flash(client, session, jpeg_bytes, real=False)
+        assert response.json()["decision"] == "fail"
+        assert "FLASH_SPOOF" in response.json()["reasons"], response.json()

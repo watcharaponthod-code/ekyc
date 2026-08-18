@@ -27,9 +27,19 @@ hardening remains.
   + `verify_evidence(flash_commanded=…)`. 5 decision tests; whole fast suite 66 green.
   Flash gate skipped unless a plan was issued → zero effect on existing sessions.
 
-## Next
-- 3: session issuance (random flash plan → CreatedSession) + API plumbing (flash_N
-  frames in /submit) + RN flash overlay that cycles colours and tags snapshots.
+- **3 (active-flash issuance + API):** `settings.flash_frames` (0=off, server-
+  controlled), `sessions.pick_flash` (random colour permutation), stored on the
+  session, returned in `CreatedSession.flash`, resolved to RGB at `/submit` and
+  passed to `verify_evidence`. 4 API tests (off by default, randomised, real
+  clears the gate, photo→FLASH_SPOOF). Fast suite 70 green.
+
+## Next (reordered: server-testable layers before the RN overlay)
+- 4: **Injection/deepfake defence** — reject byte/near-identical frames (an
+  injected static stream repeats), require flash frames to differ, enforce
+  device attestation when `require_attestation` is set.
+- 5: **Depth/3D** — landmark-planarity flat-photo cue (honest: not a mask detector).
+- 6: RN flash overlay (cycle colours, tag snapshots flash_N) — needs a device build.
+- 7+: adversarial threshold tuning, end-to-end with real models, tighten.
 - 3: landmark planarity score from `FrameFacts` (needs landmark z in facts).
 - 4: replay (frame hash dup / low inter-frame diff) + require attestation when configured.
 - 5+: adversarial threshold tuning, end-to-end tests, tighten.

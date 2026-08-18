@@ -20,6 +20,7 @@ from .db import get_db, init_db
 from .logging_config import configure as configure_logging
 from .logging_config import log_event, timed
 from .decision import NEUTRAL_KEY, required_frame_keys
+from .flash import FLASH_PALETTE
 from .ml.backend import FaceBackend, FakeFaceBackend
 from .models import AuditEvent
 from .schemas import (
@@ -150,7 +151,10 @@ async def submit_evidence(
         f.filename.rsplit(".", 1)[0]: await f.read() for f in frames if f.filename
     }
 
-    output, facts, hashes = verify_evidence(get_backend(), issued, parsed, uploaded, thresholds)
+    flash_commanded = [FLASH_PALETTE[name] for name in (record.flash or []) if name in FLASH_PALETTE]
+    output, facts, hashes = verify_evidence(
+        get_backend(), issued, parsed, uploaded, thresholds, flash_commanded
+    )
 
     response = DecisionResponse(
         decision="pass" if output.passed else "fail",
