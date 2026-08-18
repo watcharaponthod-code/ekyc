@@ -84,7 +84,7 @@ export function ResultView({
               { backgroundColor: theme.colors.accent, opacity: pressed ? 0.85 : 1 },
             ]}
           >
-            <Text style={styles.primaryText}>{t.done}</Text>
+            <Text style={[styles.primaryText, { color: theme.colors.onAccent ?? '#0A0E1A' }]}>{t.done}</Text>
           </Pressable>
         ) : (
           <>
@@ -96,7 +96,7 @@ export function ResultView({
                 { backgroundColor: theme.colors.accent, opacity: pressed ? 0.85 : 1 },
               ]}
             >
-              <Text style={styles.primaryText}>{t.retry}</Text>
+              <Text style={[styles.primaryText, { color: theme.colors.onAccent ?? '#0A0E1A' }]}>{t.retry}</Text>
             </Pressable>
             <Pressable accessibilityRole="button" onPress={onDone} style={styles.secondary}>
               <Text style={[styles.secondaryText, { color: theme.colors.textDim }]}>{t.cancel}</Text>

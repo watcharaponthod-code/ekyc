@@ -436,7 +436,7 @@ function Notice({ theme, text, action, onPress }: { theme: EKYCTheme; text: stri
       <Text style={[theme.typography.body, { color: theme.colors.text, textAlign: 'center' }]}>{text}</Text>
       {onPress ? (
         <Pressable accessibilityRole="button" onPress={onPress} style={[styles.noticeButton, { backgroundColor: theme.colors.accent }]}>
-          <Text style={styles.noticeButtonText}>{action}</Text>
+          <Text style={[styles.noticeButtonText, { color: theme.colors.onAccent ?? '#0A0E1A' }]}>{action}</Text>
         </Pressable>
       ) : null}
     </View>

@@ -1,0 +1,63 @@
+@font-face { font-family: "TH Sarabun New"; src: url("fonts/THSarabunNew.ttf") format("truetype"); font-weight: 400; font-style: normal; }
+@font-face { font-family: "TH Sarabun New"; src: url("fonts/THSarabunNew-Bold.ttf") format("truetype"); font-weight: 700; font-style: normal; }
+@font-face { font-family: "TH Sarabun New"; src: url("fonts/THSarabunNew-Italic.ttf") format("truetype"); font-weight: 400; font-style: italic; }
+@font-face { font-family: "TH Sarabun New"; src: url("fonts/THSarabunNew-BoldItalic.ttf") format("truetype"); font-weight: 700; font-style: italic; }
+
+@page { size: A4; margin: 22mm 20mm 24mm 20mm; }
+
+:root { --ink: #111111; --muted: #444444; --rule: #9a9a9a; --light: #e6e6e6; --head: #1f3a5f; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: #ffffff; color: var(--ink); }
+body { font-family: "TH Sarabun New", "Sarabun", "Leelawadee UI", "Tahoma", serif; font-size: 16pt; line-height: 1.45; }
+
+/* cover */
+.cover { height: 247mm; display: flex; flex-direction: column; justify-content: space-between; page-break-after: always; }
+.cover .org { font-size: 16pt; color: var(--muted); letter-spacing: .02em; }
+.cover h1 { font-size: 30pt; line-height: 1.25; margin: 0 0 8mm; color: var(--head); font-weight: 700; }
+.cover .subtitle { font-size: 20pt; color: var(--ink); margin-bottom: 4mm; }
+.cover .rule { height: 2px; background: var(--head); width: 60mm; margin: 6mm 0 8mm; }
+.cover table.meta { border-collapse: collapse; font-size: 16pt; }
+.cover table.meta td { padding: 2pt 14pt 2pt 0; vertical-align: top; }
+.cover table.meta td:first-child { color: var(--muted); width: 38mm; }
+.cover .foot { font-size: 14pt; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 4mm; }
+
+/* toc */
+.toc { page-break-after: always; }
+.toc ol { list-style: none; padding: 0; margin: 0; }
+.toc li { display: flex; justify-content: space-between; border-bottom: 1px dotted var(--light); padding: 3pt 0; }
+.toc li.l2 { padding-left: 24pt; font-size: 15pt; }
+
+/* headings */
+h1.sec { font-size: 22pt; color: var(--head); margin: 0 0 8pt; padding-bottom: 4pt; border-bottom: 1.5px solid var(--head); page-break-after: avoid; }
+h2 { font-size: 18pt; margin: 16pt 0 6pt; color: var(--ink); page-break-after: avoid; }
+h3 { font-size: 16.5pt; margin: 12pt 0 4pt; page-break-after: avoid; }
+section.chapter { page-break-before: always; }
+p { margin: 0 0 8pt; text-align: justify; }
+ul, ol { margin: 0 0 8pt; padding-left: 26pt; }
+li { margin: 1pt 0; }
+b { font-weight: 700; }
+
+/* tables */
+table.data { border-collapse: collapse; width: 100%; margin: 6pt 0 10pt; font-size: 14.5pt; page-break-inside: auto; }
+table.data caption { caption-side: top; text-align: left; font-weight: 700; margin-bottom: 4pt; font-size: 15pt; }
+table.data th, table.data td { border: 1px solid var(--rule); padding: 4pt 6pt; vertical-align: top; text-align: left; }
+table.data th { background: #eef2f7; font-weight: 700; }
+table.data tr { page-break-inside: avoid; }
+.kv td:first-child { width: 34%; color: var(--muted); }
+
+/* figures */
+figure { margin: 8pt 0 12pt; page-break-inside: avoid; text-align: center; }
+figure img { max-width: 100%; height: auto; border: 1px solid var(--light); }
+figure.shots { display: flex; gap: 8pt; justify-content: center; }
+figure.shots img { width: 31%; border: 1px solid var(--rule); border-radius: 6pt; }
+figcaption { font-size: 14pt; color: var(--muted); margin-top: 4pt; text-align: center; }
+figure.diagram svg { max-width: 100%; height: auto; }
+
+code, pre { font-family: "Consolas", "Courier New", monospace; font-size: 12.5pt; }
+code { background: #f2f2f2; padding: 0 3pt; border-radius: 3pt; }
+pre { background: #f6f6f6; border: 1px solid var(--light); padding: 8pt 10pt; white-space: pre-wrap; word-break: break-all; margin: 6pt 0 10pt; page-break-inside: avoid; }
+.note { border-left: 3pt solid var(--head); padding: 4pt 10pt; margin: 8pt 0; background: #f7f9fc; page-break-inside: avoid; }
+.warn { border-left-color: #a33; background: #fbf5f5; }
+.small { font-size: 14pt; color: var(--muted); }
+.sig { margin-top: 20mm; display: flex; gap: 20mm; }
+.sig div { flex: 1; border-top: 1px solid var(--ink); padding-top: 4pt; text-align: center; font-size: 15pt; }

@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native'
 import { File, Paths } from 'expo-file-system'
-import { IntroView, defaultTheme } from '@ekyc/react-native-ekyc'
+import { IntroView, defaultTheme, type EKYCTheme } from '@ekyc/react-native-ekyc'
 import {
   DEFAULT_CONSISTENCY_MIN,
   DEFAULT_MATCH_MIN,
@@ -24,8 +24,29 @@ import {
 } from '@ekyc/react-native-ekyc-local'
 
 /** Bumped per published APK so a phone can prove which build it runs. */
-const APP_BUILD = 1
-const theme = defaultTheme
+const APP_BUILD = 2
+
+/**
+ * Light theme — deliberately the opposite of the server demo's dark one, so
+ * the two apps are never mistaken for each other on a phone. Same geometry
+ * and typography as `defaultTheme`; only the palette changes.
+ */
+const theme: EKYCTheme = {
+  ...defaultTheme,
+  colors: {
+    background: '#F4F6FA',
+    scrim: 'rgba(244, 246, 250, 0.90)',
+    surface: '#FFFFFF',
+    accent: '#1D4ED8',
+    accentSoft: 'rgba(29, 78, 216, 0.16)',
+    success: '#15803D',
+    danger: '#DC2626',
+    text: '#0F172A',
+    textDim: 'rgba(15, 23, 42, 0.62)',
+    ovalIdle: 'rgba(15, 23, 42, 0.30)',
+    onAccent: '#FFFFFF',
+  },
+}
 const TEMPLATE_FILE = new File(Paths.document, 'ekyc-local-template.json')
 
 type Mode = 'check' | 'enroll' | 'verify'
@@ -96,7 +117,7 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="dark-content" />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>eKYC Local</Text>
         <Text style={styles.meta}>{`ทำงานบนเครื่องล้วน ไม่มีเซิร์ฟเวอร์ · build ${APP_BUILD}`}</Text>
@@ -140,7 +161,7 @@ export default function App() {
         {last ? (
           <View style={styles.card}>
             <Text style={styles.label}>ผลล่าสุด · {last.mode}</Text>
-            <Text style={[styles.body, { color: last.result.passed ? '#7CE0A3' : '#FF8A80' }]}>
+            <Text style={[styles.body, { color: last.result.passed ? theme.colors.success : theme.colors.danger, fontWeight: '700' }]}>
               {last.result.passed ? 'ผ่าน' : `ไม่ผ่าน: ${last.result.reasons.join(', ')}`}
             </Text>
             <Text style={styles.mono}>
@@ -170,7 +191,7 @@ function Button({ label, onPress, variant = 'solid' }: { label: string; onPress:
       onPress={onPress}
       style={[styles.button, variant === 'solid' ? { backgroundColor: theme.colors.accent } : { borderColor: theme.colors.accent, borderWidth: 1 }]}
     >
-      <Text style={[styles.buttonText, variant === 'solid' ? { color: '#0A0E1A' } : { color: theme.colors.accent }]}>{label}</Text>
+      <Text style={[styles.buttonText, variant === 'solid' ? { color: theme.colors.onAccent ?? '#0A0E1A' } : { color: theme.colors.accent }]}>{label}</Text>
     </Pressable>
   )
 }

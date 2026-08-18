@@ -29,6 +29,8 @@ export type EKYCTheme = {
     text: string
     textDim: string
     ovalIdle: string
+    /** Text/icon colour on top of `accent`. Defaults to near-black (right for the default light-blue accent). */
+    onAccent?: string
   }
   radii: { pill: number; card: number }
   spacing: (steps: number) => number

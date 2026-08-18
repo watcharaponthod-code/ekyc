@@ -64,7 +64,7 @@ export function IntroView({ locale = 'th', theme = defaultTheme, onStart, onCanc
             { backgroundColor: theme.colors.accent, opacity: pressed ? 0.85 : 1 },
           ]}
         >
-          <Text style={styles.primaryText}>{t.start}</Text>
+          <Text style={[styles.primaryText, { color: theme.colors.onAccent ?? '#0A0E1A' }]}>{t.start}</Text>
         </Pressable>
         {onCancel ? (
           <Pressable accessibilityRole="button" onPress={onCancel} style={styles.secondary}>
