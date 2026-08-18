@@ -153,6 +153,8 @@ export type CreatedSession = {
   nonce: string
   /** Server-issued order. The client must not reorder or substitute these. */
   challenges: ChallengeName[]
+  /** Active-flash colour names to show in order (empty/absent when off). */
+  flash?: string[]
   expiresAt: string
   policy: SessionPolicy
 }

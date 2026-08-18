@@ -134,6 +134,15 @@ describe('explainReasons', () => {
     expect(explainReasons('en', ['QUALITY_SHARPNESS', 'QUALITY_BRIGHTNESS'])).toHaveLength(2)
   })
 
+  it('explains the new hardening reason codes in both languages', () => {
+    for (const code of ['FLASH_SPOOF', 'FLAT_FACE', 'FRAMES_DUPLICATE', 'ATTESTATION_MISSING']) {
+      expect(explainReasons('en', [code])[0]).toBeTruthy()
+      expect(explainReasons('th', [code])[0]).toBeTruthy()
+      // mapped, not passed through as the raw code
+      expect(explainReasons('en', [code])[0]).not.toBe(code)
+    }
+  })
+
   it('never repeats the same advice', () => {
     expect(explainReasons('en', ['PAD_LOW', 'PAD_LOW'])).toHaveLength(1)
   })

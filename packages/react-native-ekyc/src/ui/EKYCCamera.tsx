@@ -36,6 +36,7 @@ import {
   type StepObservation,
 } from '../types'
 import { DirectionHint } from './DirectionHint'
+import { flashHex } from './flashColors'
 import { FrameOverlay } from './FrameOverlay'
 import { InstructionBanner } from './InstructionBanner'
 import { ResultView } from './ResultView'
@@ -65,6 +66,10 @@ export type EKYCCameraProps = {
 /** Prefer 60 fps; harmless where unavailable. Module-level so its identity is stable. */
 const CAMERA_CONSTRAINTS = [{ fps: 60 }]
 
+/** How long each flash colour is held on screen before its snapshot — enough
+ * for the screen to paint and the camera to expose the lit face. */
+const FLASH_HOLD_MS = 350
+
 /** Last few diagnostic lines, kept so a phone with no cable can still show why. */
 const RECENT_LOG: string[] = []
 /** Set by the mounted EKYCCamera so module-level `log` can reach the server. */
@@ -81,6 +86,7 @@ function log(message: string, detail?: unknown): void {
 type Screen =
   | { kind: 'starting' }
   | { kind: 'capturing' }
+  | { kind: 'flashing'; color: string }
   | { kind: 'result'; passed: boolean; reasons: string[] }
   | { kind: 'error'; message: string }
 
@@ -188,24 +194,25 @@ export function EKYCCamera({
   //    encodes in tens of milliseconds, a full sensor frame in seconds.
   // Preview resolution (screen-sized) is far more than the server's models
   // consume (ArcFace 112 px, MiniFASNet 80 px), so nothing is lost.
-  const capture = useCallback((key: string) => {
+  const snapshot = useCallback(async (key: string) => {
     const startedAt = Date.now()
-    const job = (async () => {
-      try {
-        const camera = cameraRef.current
-        if (!camera) throw new Error('camera not mounted')
-        // Grab the pixels NOW (fast, in memory); encode off the critical path.
-        const image = await camera.takeSnapshot()
-        const path = await image.saveToTemporaryFileAsync('jpg', 85)
-        frames.current.set(key, path)
-        log('captured', `${key} ${Date.now() - startedAt}ms`)
-      } catch (error) {
-        log('capture failed', `${key}: ${(error as Error).message}`)
-        session.current?.abort('captureFailed')
-      }
-    })()
-    pendingCaptures.current.push(job)
+    try {
+      const camera = cameraRef.current
+      if (!camera) throw new Error('camera not mounted')
+      // Grab the pixels NOW (fast, in memory); encode off the critical path.
+      const image = await camera.takeSnapshot()
+      const path = await image.saveToTemporaryFileAsync('jpg', 85)
+      frames.current.set(key, path)
+      log('captured', `${key} ${Date.now() - startedAt}ms`)
+    } catch (error) {
+      log('capture failed', `${key}: ${(error as Error).message}`)
+      session.current?.abort('captureFailed')
+    }
   }, [])
+
+  const capture = useCallback((key: string) => {
+    pendingCaptures.current.push(snapshot(key))
+  }, [snapshot])
 
   // ---- upload ------------------------------------------------------------
 
@@ -247,6 +254,22 @@ export function EKYCCamera({
       setScreen({ kind: 'result', passed: false, reasons: [code] })
     }
   }, [client, width, height])
+
+  // After the liveness steps, the active-flash phase (when the session issued
+  // one): show each server-chosen colour full-screen so it lights the face,
+  // snapshot the lit face as flash_i, then submit. A real face reflects the
+  // random sequence; a photo/replay/injected stream cannot — the server checks
+  // the correlation. Sequential and awaited so each snapshot lands under its
+  // own colour.
+  const runFlash = useCallback(async () => {
+    const colors = remote.current?.flash ?? []
+    for (let i = 0; i < colors.length; i++) {
+      setScreen({ kind: 'flashing', color: colors[i]! })
+      await new Promise((resolve) => setTimeout(resolve, FLASH_HOLD_MS))
+      await snapshot(`flash_${i}`)
+    }
+    await submit()
+  }, [snapshot, submit])
 
   // ---- session lifecycle -------------------------------------------------
 
@@ -324,14 +347,15 @@ export function EKYCCamera({
         return
       }
       if (event.type === 'complete') {
-        void submit()
+        if ((remote.current?.flash?.length ?? 0) > 0) void runFlash()
+        else void submit()
         return
       }
       log('liveness failed', event.reason)
       hapticFailure()
       setScreen({ kind: 'result', passed: false, reasons: [`LOCAL_${event.reason}`] })
     },
-    [capture, submit],
+    [capture, submit, runFlash],
   )
 
   // Start once permission is granted — and only then. This effect must not
@@ -480,7 +504,10 @@ export function EKYCCamera({
           // in flight when the session completes, and deactivating the camera
           // under it fails the capture (seen: "Camera is closed" on the final
           // frame of an otherwise perfect run). Off again once there is a verdict.
-          isActive={screen.kind === 'capturing' && (state.phase === 'running' || state.phase === 'uploading')}
+          isActive={
+            screen.kind === 'flashing' ||
+            (screen.kind === 'capturing' && (state.phase === 'running' || state.phase === 'uploading'))
+          }
           outputs={outputs}
           // Ask the pipeline for 60 fps where the sensor supports it. VisionCamera
           // treats this as a preference and falls back gracefully, so it costs
@@ -502,6 +529,18 @@ export function EKYCCamera({
           }}
         />
       </View>
+
+      {screen.kind === 'flashing' ? (
+        <View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            { backgroundColor: flashHex(screen.color), alignItems: 'center', justifyContent: 'center', zIndex: 30 },
+          ]}
+        >
+          <Text style={{ color: '#00000099', fontSize: 18, fontWeight: '700' }}>{t.flashHold}</Text>
+        </View>
+      ) : null}
 
       <FrameOverlay
         size={{ x: 0, y: 0, width, height }}

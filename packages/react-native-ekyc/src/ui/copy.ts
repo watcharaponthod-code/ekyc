@@ -23,6 +23,7 @@ type Strings = {
   challenge: Record<ChallengeName, string>
   holdOn: string
   uploading: string
+  flashHold: string
   intro: { title: string; body: string; steps: string[]; start: string; consent: string }
   result: {
     successTitle: string
@@ -56,6 +57,7 @@ const th: Strings = {
   },
   holdOn: 'ค้างไว้',
   uploading: 'กำลังตรวจสอบ…',
+  flashHold: 'มองที่หน้าจอ ค้างไว้สักครู่',
   intro: {
     title: 'ยืนยันว่าเป็นคุณ',
     body: 'ใช้เวลาไม่กี่วินาที ทำตามคำสั่งบนหน้าจอทีละขั้น',
@@ -77,6 +79,10 @@ const th: Strings = {
   },
   reason: {
     PAD_LOW: 'ระบบตรวจพบว่าอาจเป็นภาพถ่ายหรือภาพจากหน้าจอ กรุณาสแกนจากใบหน้าจริง',
+    FLASH_SPOOF: 'แสงสะท้อนบนใบหน้าไม่ตรงกับสีที่จอกะพริบ อาจเป็นภาพถ่ายหรือวิดีโอ กรุณาสแกนจากใบหน้าจริง',
+    FLAT_FACE: 'ตรวจพบว่าอาจเป็นภาพแบน กรุณาสแกนจากใบหน้าจริง',
+    FRAMES_DUPLICATE: 'ตรวจพบภาพซ้ำผิดปกติ กรุณาสแกนใหม่',
+    ATTESTATION_MISSING: 'อุปกรณ์ไม่ผ่านการตรวจสอบความปลอดภัย กรุณาใช้แอปทางการบนเครื่องที่ไม่ได้ดัดแปลง',
     QUALITY_SHARPNESS: 'ภาพเบลอ ถือเครื่องให้นิ่งขึ้นอีกนิด',
     QUALITY_BRIGHTNESS: 'แสงไม่เหมาะสม ลองย้ายไปที่ที่แสงสม่ำเสมอ',
     QUALITY_FACE_TOO_SMALL: 'ใบหน้าเล็กเกินไป ขยับเข้าใกล้กล้องมากขึ้น',
@@ -131,6 +137,7 @@ const en: Strings = {
   },
   holdOn: 'Hold steady',
   uploading: 'Checking…',
+  flashHold: 'Look at the screen, hold still',
   intro: {
     title: "Let's check it's you",
     body: 'Takes a few seconds. Follow one instruction at a time.',
@@ -153,6 +160,10 @@ const en: Strings = {
   },
   reason: {
     PAD_LOW: 'That looked like a photo or a screen. Please scan your real face.',
+    FLASH_SPOOF: "The light on your face didn't match the screen flash. Please scan your real face.",
+    FLAT_FACE: 'That looked flat. Please scan your real face.',
+    FRAMES_DUPLICATE: 'We saw repeated frames. Please scan again.',
+    ATTESTATION_MISSING: 'This device failed the security check. Use the official app on an unmodified device.',
     QUALITY_SHARPNESS: 'The photo was blurry. Hold the phone a little steadier.',
     QUALITY_BRIGHTNESS: 'The lighting was off. Move somewhere more evenly lit.',
     QUALITY_FACE_TOO_SMALL: 'Your face was too small. Move closer to the camera.',

@@ -55,11 +55,19 @@ hardening remains.
   catch a photo of a face, only truly-flat/degenerate/injected frames. Kept as an
   advisory sanity signal; real depth defence needs hardware. 84 tests green.
 
+- **7 (RN device flash overlay) DONE:** `ui/flashColors.ts` (palette matching
+  server), EKYCCamera runs a flash phase after the steps (show each colour
+  full-screen, snapshot flash_N, then submit; `snapshot` refactor, isActive
+  covers flashing, full-screen overlay), client copy for FLASH_SPOOF / FLAT_FACE
+  / FRAMES_DUPLICATE / ATTESTATION_MISSING (th+en). TS clean; 96 module tests.
+  On-device runtime pending an APK build, like the rest of the RN UI.
+
 ## Next
-- 7: **RN device flash overlay** — the device side of active-flash: cycle the
-  session's colours full-screen, snapshot each as flash_N, upload. Plus client
-  copy for the new reason codes (FLASH_SPOOF, FRAMES_DUPLICATE, ATTESTATION_MISSING).
-- 8+: adversarial threshold tuning, end-to-end with real models, tighten.
+- 8: **Adversarial flash robustness** — harden the correlation against real
+  noise (low ambient, one-channel-dominant room light, partial reflection,
+  motion between frames); tune FLASH_MIN; add edge-case tests.
+- 9: update spec + architecture artifact with the new layers (team handoff).
+- 10: build APK with EKYC_FLASH_FRAMES on, emulator/device smoke.
 - 7: RN flash overlay (cycle colours, tag snapshots flash_N) — needs a device build.
 - 8+: adversarial threshold tuning, end-to-end with real models, tighten.
 
