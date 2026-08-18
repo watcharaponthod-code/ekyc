@@ -35,6 +35,7 @@ see `docs/ml-validation.md` §0.
 
 - `docs/superpowers/specs/2026-08-17-ekyc-hybrid-design.md` — the design, the threat model, and what this system does not defend against
 - `docs/ml-validation.md` — what was measured, and three published claims that turned out to be wrong
+- `docs/handoff-2026-08-18-th.md` — สรุปส่งมอบภาษาไทย: mask defences, ISO harness, Railway, local APK
 - `docs/pad-evaluation.md` — how to measure APCER/BPCER per attack species (ISO/IEC 30107-3 metrics) with the built-in harness
 - `docs/qa-checklist.md` — what still needs a physical phone
 - `packages/react-native-ekyc/README.md` — how to use the module
