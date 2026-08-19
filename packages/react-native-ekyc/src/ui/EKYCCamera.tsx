@@ -606,7 +606,7 @@ export function EKYCCamera({
       ? t.pulseHold
       : state.phase === 'uploading'
         ? t.uploading
-        : instructionFor(locale, state.framing, state.challenge, holding)
+        : instructionFor(locale, state.framing, state.awaitingRecenter ? 'center' : state.challenge, holding, state.awaitingRecenter ? 0 : state.stepPhase)
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
@@ -809,6 +809,9 @@ const idleState: LivenessState = {
   holdProgress: 0,
   framing: 'noFace',
   stepMetrics: {},
+  stepPhase: 0,
+  phaseCount: 1,
+  awaitingRecenter: false,
 }
 
 const styles = StyleSheet.create({

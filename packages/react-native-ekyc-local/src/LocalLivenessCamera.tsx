@@ -551,7 +551,7 @@ export function LocalLivenessCamera({
       ? t.pulseHold
       : screen.kind === 'judging' || state.phase === 'uploading'
         ? t.uploading
-        : instructionFor(locale, state.framing, state.challenge, holding)
+        : instructionFor(locale, state.framing, state.awaitingRecenter ? 'center' : state.challenge, holding, state.awaitingRecenter ? 0 : state.stepPhase)
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
@@ -628,7 +628,7 @@ function Notice({ theme, text, action, onPress }: { theme: EKYCTheme; text: stri
   )
 }
 
-const idleState: LivenessState = { phase: 'idle', stepIndex: 0, stepCount: 1, challenge: null, holdProgress: 0, framing: 'noFace', stepMetrics: {} }
+const idleState: LivenessState = { phase: 'idle', stepIndex: 0, stepCount: 1, challenge: null, holdProgress: 0, framing: 'noFace', stepMetrics: {}, stepPhase: 0, phaseCount: 1, awaitingRecenter: false }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },

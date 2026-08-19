@@ -210,6 +210,9 @@ export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
         holdProgress: params.progress ?? 0,
         framing: framing === 'ok' ? 'ok' : (framing as Framing),
         stepMetrics: {},
+        stepPhase: 0,
+        phaseCount: 1,
+        awaitingRecenter: false,
       }
     : (state ?? {
         phase: 'running',
@@ -219,6 +222,9 @@ export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
         holdProgress: 0,
         framing: 'ok',
         stepMetrics: {},
+        stepPhase: 0,
+        phaseCount: 1,
+        awaitingRecenter: false,
       })
   const t = strings(locale)
   const holding = current.holdProgress > 0.05

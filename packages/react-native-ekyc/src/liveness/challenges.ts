@@ -1,5 +1,5 @@
 import type { ChallengeName, FaceSignal } from '../types'
-import { Challenge, type ChallengeMetric } from './Challenge'
+import { Challenge, type ChallengeMemo, type ChallengeMetric } from './Challenge'
 
 /**
  * Which way ML Kit's `yawAngle` grows when the user turns to *their own* left.
@@ -35,15 +35,23 @@ export const CHALLENGE_DEFAULTS = {
   centerMaxPitch: 12,
   /** Server: `turn_yaw_min_deg` 22 from neutral. Margin +3 so the mid-hold snapshot clears it. */
   turnMinYawDelta: 25,
-  /** Nod: pitch change from neutral. Local-only flow (the server never issues `nod`). */
+  /** Nod, phase 1: pitch excursion from neutral in either direction. Local-only flow (the server never issues `nod`). */
   nodMinPitchDelta: 12,
+  /** Nod, phase 2: excursion to the *opposite* side, as a fraction of `nodMinPitchDelta` — up 12° then down ≥ 7.2° = a real nod, ≥ 19° of travel. */
+  nodReturnFraction: 0.6,
   /** Mouth: contour gap ratio *rise* over the neutral frame. Server checks jawOpen ≥ 0.35 & Δ ≥ 0.20; the contour ratio runs ~0 shut → 0.3+ open. */
   mouthOpenMinDelta: 0.18,
   /** Fallback when no baseline exists (a host that skips `center`). */
   mouthOpenMinAbsolute: 0.3,
   /** ML Kit mean eye-open probability at or below this = closed. Open reads 0.9+. */
   eyesClosedMaxOpen: 0.5,
+  /** Blink, phase 2: eyes must read open again — a shut photo never does. */
+  eyesReopenMinOpen: 0.7,
+  /** Mouth, phase 2: after the held open frame the gap must fall back to within this fraction of the required rise — a gaping mask/photo never closes. */
+  mouthCloseFraction: 0.5,
   smileMin: 0.7,
+  /** Smile, phase 2: probability must drop back below this fraction of `smileMin`. */
+  smileRelaxFraction: 0.5,
 } as const
 
 export type CenterOptions = {
@@ -61,6 +69,8 @@ export type TurnOptions = {
 export type CloseEyesOptions = {
   /** Mean open-probability of the two eyes must be at or below this. */
   maxEyeOpen?: number
+  /** ...and rise back to at least this afterwards (phase 2). */
+  reopenMinOpen?: number
 }
 
 export type SmileOptions = {
@@ -68,8 +78,10 @@ export type SmileOptions = {
 }
 
 export type NodOptions = {
-  /** Pitch change from the neutral frame (degrees), either direction. */
+  /** Pitch excursion from the neutral frame (degrees), either direction, for phase 1. */
   minPitch?: number
+  /** Opposite-side excursion for phase 2, as a fraction of `minPitch`. */
+  returnFraction?: number
 }
 
 export type OpenMouthOptions = {
@@ -77,6 +89,8 @@ export type OpenMouthOptions = {
   minDelta?: number
   /** Absolute floor used only when there is no baseline. */
   minMouthOpen?: number
+  /** Phase 2: the gap must fall back to baseline + this fraction of the rise. */
+  closeFraction?: number
 }
 
 /**
@@ -88,6 +102,7 @@ export type OpenMouthOptions = {
  */
 export class CenterChallenge extends Challenge {
   readonly name: ChallengeName = 'center'
+  override readonly requiresRecenter = false
 
   constructor(private readonly options: CenterOptions = {}) {
     super()
@@ -117,22 +132,27 @@ export class CenterChallenge extends Challenge {
 export class CloseEyesChallenge extends Challenge {
   readonly name: ChallengeName = 'closeEyes'
   readonly holdMs = 0
+  /** closed → open again. The evidence frame is the closed one. */
+  override readonly phaseCount = 2
+  override readonly capturePhase = 0
 
   constructor(private readonly options: CloseEyesOptions = {}) {
     super()
   }
 
-  isSatisfied(signal: FaceSignal): boolean {
+  isSatisfied(signal: FaceSignal, _baseline: FaceSignal | null = null, phase = 0): boolean {
     // ML Kit's open-probability lags a fast blink and the two eyes rarely
     // bottom out on the same frame, so require the *average* below the
     // threshold rather than both eyes independently.
-    const { maxEyeOpen = CHALLENGE_DEFAULTS.eyesClosedMaxOpen } = this.options
-    return (signal.leftEye + signal.rightEye) / 2 <= maxEyeOpen
+    const { maxEyeOpen = CHALLENGE_DEFAULTS.eyesClosedMaxOpen, reopenMinOpen = CHALLENGE_DEFAULTS.eyesReopenMinOpen } = this.options
+    const open = (signal.leftEye + signal.rightEye) / 2
+    return phase === 0 ? open <= maxEyeOpen : open >= reopenMinOpen
   }
 
-  override metric(signal: FaceSignal): ChallengeMetric {
-    const { maxEyeOpen = CHALLENGE_DEFAULTS.eyesClosedMaxOpen } = this.options
-    return { value: (signal.leftEye + signal.rightEye) / 2, needed: maxEyeOpen, direction: 'below' }
+  override metric(signal: FaceSignal, _baseline: FaceSignal | null = null, phase = 0): ChallengeMetric {
+    const { maxEyeOpen = CHALLENGE_DEFAULTS.eyesClosedMaxOpen, reopenMinOpen = CHALLENGE_DEFAULTS.eyesReopenMinOpen } = this.options
+    const open = (signal.leftEye + signal.rightEye) / 2
+    return phase === 0 ? { value: open, needed: maxEyeOpen, direction: 'below' } : { value: open, needed: reopenMinOpen, direction: 'above' }
   }
 }
 
@@ -180,19 +200,24 @@ export class TurnRightChallenge extends Challenge {
 
 export class SmileChallenge extends Challenge {
   readonly name: ChallengeName = 'smile'
+  /** smile (held, snapshotted) → relax again: a smiling photo never relaxes. */
+  override readonly phaseCount = 2
+  override readonly capturePhase = 0
 
   constructor(private readonly options: SmileOptions = {}) {
     super()
   }
 
-  isSatisfied(signal: FaceSignal): boolean {
+  isSatisfied(signal: FaceSignal, _baseline: FaceSignal | null = null, phase = 0): boolean {
     const { minSmile = CHALLENGE_DEFAULTS.smileMin } = this.options
-    return signal.smile >= minSmile
+    return phase === 0 ? signal.smile >= minSmile : signal.smile <= minSmile * CHALLENGE_DEFAULTS.smileRelaxFraction
   }
 
-  override metric(signal: FaceSignal): ChallengeMetric {
+  override metric(signal: FaceSignal, _baseline: FaceSignal | null = null, phase = 0): ChallengeMetric {
     const { minSmile = CHALLENGE_DEFAULTS.smileMin } = this.options
-    return { value: signal.smile, needed: minSmile, direction: 'above' }
+    return phase === 0
+      ? { value: signal.smile, needed: minSmile, direction: 'above' }
+      : { value: signal.smile, needed: minSmile * CHALLENGE_DEFAULTS.smileRelaxFraction, direction: 'below' }
   }
 }
 
@@ -206,6 +231,9 @@ export class SmileChallenge extends Challenge {
  */
 export class OpenMouthChallenge extends Challenge {
   readonly name: ChallengeName = 'openMouth'
+  /** open (held, snapshotted) → closed again. A gaping photo or mask never closes. */
+  override readonly phaseCount = 2
+  override readonly capturePhase = 0
 
   constructor(private readonly options: OpenMouthOptions = {}) {
     super()
@@ -216,12 +244,20 @@ export class OpenMouthChallenge extends Challenge {
     return baseline ? baseline.mouthOpen + minDelta : minMouthOpen
   }
 
-  isSatisfied(signal: FaceSignal, baseline: FaceSignal | null = null): boolean {
-    return signal.mouthOpen >= this.needed(baseline)
+  private closedBelow(baseline: FaceSignal | null): number {
+    const { minDelta = CHALLENGE_DEFAULTS.mouthOpenMinDelta, closeFraction = CHALLENGE_DEFAULTS.mouthCloseFraction } = this.options
+    const rest = baseline ? baseline.mouthOpen : 0
+    return rest + minDelta * closeFraction
   }
 
-  override metric(signal: FaceSignal, baseline: FaceSignal | null = null): ChallengeMetric {
-    return { value: signal.mouthOpen, needed: this.needed(baseline), direction: 'above' }
+  isSatisfied(signal: FaceSignal, baseline: FaceSignal | null = null, phase = 0): boolean {
+    return phase === 0 ? signal.mouthOpen >= this.needed(baseline) : signal.mouthOpen <= this.closedBelow(baseline)
+  }
+
+  override metric(signal: FaceSignal, baseline: FaceSignal | null = null, phase = 0): ChallengeMetric {
+    return phase === 0
+      ? { value: signal.mouthOpen, needed: this.needed(baseline), direction: 'above' }
+      : { value: signal.mouthOpen, needed: this.closedBelow(baseline), direction: 'below' }
   }
 }
 
@@ -234,19 +270,40 @@ export class OpenMouthChallenge extends Challenge {
  */
 export class NodChallenge extends Challenge {
   readonly name: ChallengeName = 'nod'
+  /**
+   * Phase 1: pitch away from neutral by `minPitch` in either direction (the
+   * memo remembers which). Phase 2: pitch to the *opposite* side by
+   * `returnFraction · minPitch`. Up-then-down or down-then-up both count —
+   * ML Kit's pitch sign differs between devices and what matters is the
+   * movement through the resting pose. A held tilt, or a photo held at an
+   * angle, never completes phase 2. The evidence frame is the phase-2 frame.
+   */
+  override readonly phaseCount = 2
+  readonly holdMs = 0
 
   constructor(private readonly options: NodOptions = {}) {
     super()
   }
 
-  isSatisfied(signal: FaceSignal, baseline: FaceSignal | null = null): boolean {
-    const { minPitch = CHALLENGE_DEFAULTS.nodMinPitchDelta } = this.options
-    return Math.abs(signal.pitch - (baseline?.pitch ?? 0)) >= minPitch
+  isSatisfied(signal: FaceSignal, baseline: FaceSignal | null = null, phase = 0, memo: ChallengeMemo = {}): boolean {
+    const { minPitch = CHALLENGE_DEFAULTS.nodMinPitchDelta, returnFraction = CHALLENGE_DEFAULTS.nodReturnFraction } = this.options
+    const delta = signal.pitch - (baseline?.pitch ?? 0)
+    if (phase === 0) {
+      if (Math.abs(delta) < minPitch) return false
+      memo.nodSign = Math.sign(delta)
+      return true
+    }
+    const sign = memo.nodSign ?? 0
+    if (sign === 0) return false
+    return -sign * delta >= minPitch * returnFraction
   }
 
-  override metric(signal: FaceSignal, baseline: FaceSignal | null = null): ChallengeMetric {
-    const { minPitch = CHALLENGE_DEFAULTS.nodMinPitchDelta } = this.options
-    return { value: Math.abs(signal.pitch - (baseline?.pitch ?? 0)), needed: minPitch, direction: 'above' }
+  override metric(signal: FaceSignal, baseline: FaceSignal | null = null, phase = 0, memo: ChallengeMemo = {}): ChallengeMetric {
+    const { minPitch = CHALLENGE_DEFAULTS.nodMinPitchDelta, returnFraction = CHALLENGE_DEFAULTS.nodReturnFraction } = this.options
+    const delta = signal.pitch - (baseline?.pitch ?? 0)
+    if (phase === 0) return { value: Math.abs(delta), needed: minPitch, direction: 'above' }
+    const sign = memo.nodSign ?? 0
+    return { value: -sign * delta, needed: minPitch * returnFraction, direction: 'above' }
   }
 }
 

@@ -8,7 +8,7 @@ import {
   type SessionOptions,
   type StepMetric,
 } from '../types'
-import type { Challenge } from './Challenge'
+import type { Challenge, ChallengeMemo } from './Challenge'
 
 /** Largest time step we trust between two frames; guards against a stalled camera. */
 const MAX_FRAME_DELTA_MS = 250
@@ -44,6 +44,11 @@ export class LivenessSession {
   private baseline: FaceSignal | null = null
   /** Best value each step reached, in the challenge's own unit — the tuning telemetry. */
   private metrics: Record<string, StepMetric> = {}
+  /** Phase of the current step (multi-phase challenges), and its scratch memo. */
+  private stepPhase = 0
+  private memo: ChallengeMemo = {}
+  /** True until the head has come back to the neutral pose for this step. */
+  private awaitingRecenter = false
 
   constructor(
     private readonly challenges: Challenge[],
@@ -64,6 +69,9 @@ export class LivenessSession {
       holdProgress: this.currentHold > 0 ? Math.min(1, this.heldMs / this.currentHold) : 0,
       framing: this.framing,
       stepMetrics: { ...this.metrics },
+      stepPhase: this.stepPhase,
+      phaseCount: challenge?.phaseCount ?? 1,
+      awaitingRecenter: this.awaitingRecenter,
       ...(this.reason ? { reason: this.reason } : {}),
     }
   }
@@ -86,6 +94,9 @@ export class LivenessSession {
     this.badFramingKind = null
     this.baseline = null
     this.metrics = {}
+    this.stepPhase = 0
+    this.memo = {}
+    this.awaitingRecenter = false
     return this.state
   }
 
@@ -125,30 +136,65 @@ export class LivenessSession {
     if (signal.t - this.stepStartedAt < this.options.minStepMs) return this.state
 
     const challenge = this.challenges[this.stepIndex]!
+
+    // A step starts from the middle: until the head is back near the neutral
+    // pose, nothing counts. This is what makes "left, then right" two
+    // movements through the centre rather than one held swing.
+    if (this.awaitingRecenter) {
+      if (!this.isRecentered(signal)) return this.state
+      this.awaitingRecenter = false
+    }
+
+    const capturePhase = challenge.capturePhase ?? challenge.phaseCount - 1
     this.recordMetric(challenge, signal)
-    if (!challenge.isSatisfied(signal, this.baseline)) {
-      this.resetHold()
-      return this.state
-    }
+    const satisfied = challenge.isSatisfied(signal, this.baseline, this.stepPhase, this.memo)
 
-    this.heldMs += delta
-
-    const hold = this.currentHold
-    const progress = hold > 0 ? this.heldMs / hold : 1
-    if (!this.capturedThisRun && progress >= this.options.captureAtProgress) {
-      this.capturedThisRun = true
-      this.onEvent({ type: 'capture', challenge: challenge.name, stepIndex: this.stepIndex })
-    }
-
-    if (this.heldMs >= hold) {
+    if (this.stepPhase === capturePhase) {
+      // The evidence phase: held for `hold`, snapshotted mid-hold.
+      if (!satisfied) {
+        this.resetHold()
+        return this.state
+      }
+      this.heldMs += delta
+      const hold = this.currentHold
+      const progress = hold > 0 ? this.heldMs / hold : 1
+      if (!this.capturedThisRun && progress >= this.options.captureAtProgress) {
+        this.capturedThisRun = true
+        this.onEvent({ type: 'capture', challenge: challenge.name, stepIndex: this.stepIndex })
+      }
+      if (this.heldMs < hold) return this.state
       // The centre step's last confirming frame becomes the baseline every
       // later challenge is measured against.
       if (this.stepIndex === 0) this.baseline = signal
-      this.onEvent({ type: 'stepComplete', challenge: challenge.name, stepIndex: this.stepIndex })
-      this.advance(signal.t)
+      this.phaseDone(challenge, signal)
+      return this.state
     }
 
+    // An event phase (e.g. "eyes open again", "mouth closed", "head back the
+    // other way"): one confirming frame moves the step on. Earlier phases are
+    // never undone by a non-confirming frame — a nod that lingers at the top
+    // is still a nod once it comes down.
+    if (satisfied) this.phaseDone(challenge, signal)
     return this.state
+  }
+
+  /** Advance to the next phase of the current step, or complete the step. */
+  private phaseDone(challenge: Challenge, signal: FaceSignal): void {
+    if (this.stepPhase < challenge.phaseCount - 1) {
+      this.stepPhase += 1
+      this.heldMs = 0 // keep `capturedThisRun`: the evidence was taken in its phase
+      return
+    }
+    this.onEvent({ type: 'stepComplete', challenge: challenge.name, stepIndex: this.stepIndex })
+    this.advance(signal.t)
+  }
+
+  /** Is the head back near the neutral pose (within the recenter tolerance)? */
+  private isRecentered(signal: FaceSignal): boolean {
+    const b = this.baseline
+    if (!b) return true
+    const tol = this.options.recenterMaxDeg
+    return Math.abs(signal.yaw - b.yaw) <= tol && Math.abs(signal.pitch - b.pitch) <= tol
   }
 
   /** All steps captured; evidence is being uploaded. */
@@ -175,7 +221,14 @@ export class LivenessSession {
   private advance(now: number): void {
     this.stepIndex += 1
     this.resetHold()
+    this.stepPhase = 0
+    this.memo = {}
     this.stepStartedAt = now
+    // Recenter is required between two *challenges*; straight after `center`
+    // the head is, by definition, already in the middle.
+    const next = this.challenges[this.stepIndex]
+    this.awaitingRecenter =
+      this.options.requireRecenter && this.stepIndex >= 2 && !!next && next.requiresRecenter && this.baseline !== null
     if (this.stepIndex >= this.challenges.length) {
       this.phase = 'uploading'
       this.onEvent({ type: 'complete' })
@@ -199,13 +252,13 @@ export class LivenessSession {
 
   /** Keep the best value this step has reached (max for 'above', min for 'below'). */
   private recordMetric(challenge: Challenge, signal: FaceSignal): void {
-    const m = challenge.metric(signal, this.baseline)
+    const m = challenge.metric(signal, this.baseline, this.stepPhase, this.memo)
     if (!m) return
-    const key = `${this.stepIndex}:${challenge.name}`
+    const key = this.stepPhase === 0 ? `${this.stepIndex}:${challenge.name}` : `${this.stepIndex}:${challenge.name}#${this.stepPhase}`
     const prev = this.metrics[key]
     const better = !prev || (m.direction === 'above' ? m.value > prev.best : m.value < prev.best)
     if (better) {
-      this.metrics[key] = { challenge: challenge.name, best: m.value, needed: m.needed, direction: m.direction, t: signal.t }
+      this.metrics[key] = { challenge: challenge.name, phase: this.stepPhase, best: m.value, needed: m.needed, direction: m.direction, t: signal.t }
     } else if (prev) {
       // keep `needed` fresh (it can move once the baseline lands)
       prev.needed = m.needed

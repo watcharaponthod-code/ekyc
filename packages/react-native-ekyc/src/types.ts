@@ -80,6 +80,8 @@ export type FailureReason =
  */
 export type StepMetric = {
   challenge: ChallengeName
+  /** Phase of a multi-phase challenge this metric belongs to (0 = first). */
+  phase: number
   best: number
   needed: number
   direction: 'above' | 'below'
@@ -99,6 +101,11 @@ export type LivenessState = {
   framing: Framing
   /** Best-so-far per step (see `StepMetric`). */
   stepMetrics: Record<string, StepMetric>
+  /** Phase of the current step and how many it has (1 = a plain pose). */
+  stepPhase: number
+  phaseCount: number
+  /** True while the step waits for the head to come back to the neutral pose. */
+  awaitingRecenter: boolean
   reason?: FailureReason
 }
 
@@ -138,6 +145,13 @@ export type SessionOptions = {
   maxFaceRatio: number
   /** Max distance of the face centre from the frame centre, in normalised units. */
   maxOffCentre: number
+  /**
+   * Every step after `center` starts only once the head is back within this
+   * many degrees (yaw and pitch) of the neutral pose. Turns it into a series
+   * of movements from the middle rather than one continuous swing.
+   */
+  requireRecenter: boolean
+  recenterMaxDeg: number
 }
 
 export const DEFAULT_SESSION_OPTIONS: SessionOptions = {
@@ -165,6 +179,10 @@ export const DEFAULT_SESSION_OPTIONS: SessionOptions = {
   minFaceRatio: 0.22,
   maxFaceRatio: 0.75,
   maxOffCentre: 0.18,
+  requireRecenter: true,
+  // Same tolerance as the centre gate: what counted as "facing the camera"
+  // at the start counts as "back in the middle" between steps.
+  recenterMaxDeg: 12,
 }
 
 // ---------------------------------------------------------------------------

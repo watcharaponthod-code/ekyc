@@ -78,6 +78,18 @@ hardening remains.
   ML Kit contours → `mouthOpenness`, pulse burst phase before flash,
   `attestation` prop, `apiKey`. Server fast suite 145, module 105.
 
+- **10 (movement, not pose — 2026-08-19):** the user caught `nod` passing on
+  a held tilt. Challenges now have **phases** (`Challenge.phaseCount`,
+  `capturePhase`, memo): nod = pitch away ≥12° then back the other way ≥7.2°
+  (either order; a held tilt or an angled photo never completes phase 2);
+  blink = closed (captured) → open again; openMouth = open (held, captured) →
+  closed; smile = smile (held) → relaxed. Between challenges the head must
+  **recenter** (`requireRecenter`, ±12° of the neutral pose) so left→right is
+  two movements through the middle. Phase-2 prompts in th/en
+  (`challengePhase2`). Server-side proof is unchanged (stills + pose deltas +
+  PAD + flash + rPPG); phases are the phone-side liveness discipline that the
+  local flow relies on entirely. Core 126 tests (`tests/motion.test.ts`).
+
 ## Next
 - **rPPG calibration on phones** — record `bona_fide` + `mask_*` with retention
   on, run `pad_eval.py`, decide `pulse_min` / `pulse_rule=enforce`. This is the

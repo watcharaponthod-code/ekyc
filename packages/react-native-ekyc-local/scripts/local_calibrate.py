@@ -79,7 +79,7 @@ def main(paths: list[str]) -> int:
     reached: dict[str, list[bool]] = defaultdict(list)
     for r in rows:
         for _key, m in (r.get("stepMetrics") or {}).items():
-            name = m["challenge"]
+            name = m["challenge"] + (f"#{m['phase']}" if m.get("phase") else "")
             best[name].append(float(m["best"]))
             needed[name].append(float(m["needed"]))
             ok = m["best"] >= m["needed"] if m.get("direction", "above") == "above" else m["best"] <= m["needed"]

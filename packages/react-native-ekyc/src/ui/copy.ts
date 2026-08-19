@@ -21,6 +21,8 @@ export type Locale = 'th' | 'en'
 type Strings = {
   framing: Record<Exclude<Framing, 'ok'>, string>
   challenge: Record<ChallengeName, string>
+  /** What to do in the second phase of a two-phase challenge (nod back, open your eyes, close your mouth...). */
+  challengePhase2: Partial<Record<ChallengeName, string>>
   holdOn: string
   uploading: string
   flashHold: string
@@ -56,7 +58,13 @@ const th: Strings = {
     turnRight: 'หันหน้าไปทางขวา',
     smile: 'ยิ้มค้างไว้',
     openMouth: 'อ้าปากกว้างๆ',
-    nod: 'พยักหน้าลงช้าๆ',
+    nod: 'เงยหน้าขึ้น แล้วก้มลง',
+  },
+  challengePhase2: {
+    nod: 'แล้วพยักกลับอีกทาง',
+    closeEyes: 'ลืมตา',
+    openMouth: 'หุบปาก',
+    smile: 'คลายยิ้ม',
   },
   holdOn: 'ค้างไว้',
   uploading: 'กำลังตรวจสอบ…',
@@ -144,7 +152,13 @@ const en: Strings = {
     turnRight: 'Turn your head right',
     smile: 'Smile and hold',
     openMouth: 'Open your mouth wide',
-    nod: 'Nod your head down',
+    nod: 'Tilt your head up, then down',
+  },
+  challengePhase2: {
+    nod: 'Now nod back the other way',
+    closeEyes: 'Open your eyes',
+    openMouth: 'Close your mouth',
+    smile: 'Relax your smile',
   },
   holdOn: 'Hold steady',
   uploading: 'Checking…',
@@ -235,10 +249,12 @@ export function instructionFor(
   framing: Framing,
   challenge: ChallengeName | null,
   holding: boolean,
+  phase: number = 0,
 ): string {
   const dict = strings(locale)
   if (framing !== 'ok') return dict.framing[framing]
   if (!challenge) return dict.uploading
+  if (phase > 0) return dict.challengePhase2[challenge] ?? dict.challenge[challenge]
   return holding ? dict.holdOn : dict.challenge[challenge]
 }
 

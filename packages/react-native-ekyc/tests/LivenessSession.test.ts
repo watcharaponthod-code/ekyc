@@ -19,6 +19,7 @@ function makeSession(
 
 const CENTERED = {}
 const EYES_SHUT = { leftEye: 0.05, rightEye: 0.05 }
+const EYES_OPEN = { leftEye: 0.95, rightEye: 0.95 }
 const TURNED_LEFT = { yaw: 30 } // positive = user's left, per the calibrated default sign
 
 describe('LivenessSession — happy path', () => {
@@ -29,10 +30,15 @@ describe('LivenessSession — happy path', () => {
     expect(session.state.stepIndex).toBe(1)
     expect(session.state.challenge).toBe('closeEyes')
 
+    // a blink is closed *then open again*: shut frames alone leave the step in phase 2
     t = feedFor(session, EYES_SHUT, 800, t)
+    expect(session.state.stepIndex).toBe(1)
+    expect(session.state.stepPhase).toBe(1)
+    t = feedFor(session, EYES_OPEN, 100, t)
     expect(session.state.stepIndex).toBe(2)
     expect(session.state.challenge).toBe('turnLeft')
 
+    // the head is already centred after the blink, so the turn counts straight away
     feedFor(session, TURNED_LEFT, 800, t)
     expect(session.state.phase).toBe('uploading')
     expect(events.at(-1)).toEqual({ type: 'complete' })
@@ -110,7 +116,10 @@ describe('LivenessSession — hold discipline', () => {
 
     session.feed(signal({ ...EYES_SHUT, t: t + 300 })) // a single blink frame, past minStepMs
 
+    // the shut frame is the evidence: captured at once, before the eyes reopen
     expect(events.filter((e) => e.type === 'capture' && e.challenge === 'closeEyes').length).toBe(1)
+    expect(session.state.stepPhase).toBe(1) // waiting for the eyes to open again
+    session.feed(signal({ ...EYES_OPEN, t: t + 450 }))
     expect(events.some((e) => e.type === 'stepComplete' && e.challenge === 'closeEyes')).toBe(true)
     expect(session.state.challenge).toBe('turnLeft')
   })
@@ -241,7 +250,8 @@ describe('LivenessSession — result reporting', () => {
   it('moves to uploading and then to the server verdict', () => {
     const { session } = makeSession(['closeEyes'])
     let t = feedFor(session, CENTERED, 800, 0)
-    feedFor(session, EYES_SHUT, 800, t)
+    t = feedFor(session, EYES_SHUT, 800, t)
+    feedFor(session, EYES_OPEN, 100, t)
     expect(session.state.phase).toBe('uploading')
 
     session.notifyResult(false, 'captureFailed')

@@ -25,7 +25,7 @@ import {
 } from '@ekyc/react-native-ekyc-local'
 
 /** Bumped per published APK so a phone can prove which build it runs. */
-const APP_BUILD = 4
+const APP_BUILD = 5
 
 /**
  * Light theme — deliberately the opposite of the server demo's dark one, so
@@ -139,7 +139,7 @@ export default function App() {
         <Text style={styles.meta}>{modelState}</Text>
 
         <Text style={styles.label}>ทดสอบ liveness</Text>
-        <Text style={styles.body}>หันซ้าย · หันขวา · อ้าปาก · พยักหน้า (สุ่มลำดับ) → อยู่นิ่ง 7 วิ วัดชีพจรจากสีผิว (rPPG) → เช็คว่าทุกภาพเป็นคนเดียวกันด้วย MobileFaceNet</Text>
+        <Text style={styles.body}>หันซ้าย · หันขวา · อ้าปากแล้วหุบ · เงยแล้วก้ม (สุ่มลำดับ กลับมามองตรงระหว่างท่า) → อยู่นิ่ง 7 วิ วัดชีพจรจากสีผิว (rPPG) → เช็คว่าทุกภาพเป็นคนเดียวกันด้วย MobileFaceNet</Text>
         <Button label="เริ่มสแกน (เช็คความสอดคล้องอย่างเดียว)" onPress={() => setScreen({ kind: 'intro', mode: 'check' })} />
 
         <Text style={styles.label}>จดจำใบหน้าในเครื่อง</Text>
@@ -190,7 +190,7 @@ export default function App() {
                 (Object.keys(last.result.report.stepMetrics).length
                   ? `\nขั้นตอน (ทำได้ / ต้องการ):\n` +
                     Object.values(last.result.report.stepMetrics)
-                      .map((m) => `  ${m.challenge}: ${m.best.toFixed(2)} ${m.direction === 'above' ? '≥' : '≤'} ${m.needed.toFixed(2)}`)
+                      .map((m) => `  ${m.challenge}${m.phase ? ` (ช่วงที่ ${m.phase + 1})` : ''}: ${m.best.toFixed(2)} ${m.direction === 'above' ? '≥' : '≤'} ${m.needed.toFixed(2)}`)
                       .join('\n')
                   : '')}
             </Text>

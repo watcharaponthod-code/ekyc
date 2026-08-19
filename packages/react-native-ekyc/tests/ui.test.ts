@@ -211,3 +211,20 @@ describe('explainReasons — local failures', () => {
     expect(explainReasons('en', ['LOCAL_faceLost', 'PAD_LOW'])).toHaveLength(2)
   })
 })
+
+describe('instructionFor — phases', () => {
+  it('tells the user what the second phase wants, in both languages', () => {
+    expect(instructionFor('th', 'ok', 'nod', false, 1)).toBe('แล้วพยักกลับอีกทาง')
+    expect(instructionFor('en', 'ok', 'closeEyes', false, 1)).toBe('Open your eyes')
+    expect(instructionFor('en', 'ok', 'openMouth', true, 1)).toBe('Close your mouth') // phase beats "hold"
+    expect(instructionFor('en', 'ok', 'turnLeft', false, 1)).toBe('Turn your head left') // no phase 2 → the base prompt
+    expect(instructionFor('en', 'tooFar', 'nod', false, 1)).toBe('Move closer') // framing still wins
+  })
+  it('every two-phase challenge has a phase-2 line in both languages', () => {
+    for (const locale of ['th', 'en'] as const) {
+      for (const name of ['nod', 'closeEyes', 'openMouth', 'smile'] as const) {
+        expect(strings(locale).challengePhase2[name]).toBeTruthy()
+      }
+    }
+  })
+})
