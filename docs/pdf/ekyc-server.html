@@ -16,7 +16,7 @@
     <table class="meta">
       <tr><td>ชื่อระบบ</td><td>eKYC Server (<code>server/</code>) และโมดูล <code>@ekyc/react-native-ekyc</code> พร้อมแอปตัวอย่าง <code>apps/example</code></td></tr>
       <tr><td>เวอร์ชันเอกสาร</td><td>1.0</td></tr>
-      <tr><td>วันที่จัดทำ</td><td>18 สิงหาคม 2569</td></tr>
+      <tr><td>วันที่จัดทำ</td><td>19 สิงหาคม 2569</td></tr>
       <tr><td>สถานะ</td><td>ฉบับส่งมอบเพื่อทดสอบภายใน (ไม่ใช่เอกสารรับรองมาตรฐาน)</td></tr>
       <tr><td>เซิร์ฟเวอร์ทดสอบ</td><td>https://ekyc-api-production-1c11.up.railway.app</td></tr>
       <tr><td>แหล่งโค้ด</td><td>https://github.com/watcharaponthod-code/ekyc</td></tr>
@@ -195,7 +195,7 @@ $ curl -H "X-API-Key: ****" -H "Content-Type: application/json" \
 {"sessionId":"s_39127d65e69f712d2baf0203","nonce":"4Mef…","challenges":["closeEyes","turnLeft","turnRight"],
  "flash":["green","white","red","blue"],"pulse":null,"expiresAt":"2026-08-18T08:22:41Z",
  "policy":{"holdMs":400,"perStepTimeoutMs":12000,"totalTimeoutMs":60000}}</pre>
-<figure><img src="figures/railway-health.png" alt="health endpoint"><figcaption>รูปที่ 2 การเรียก <code>/v1/health</code> ของเซิร์ฟเวอร์ทดสอบผ่านเบราว์เซอร์</figcaption></figure>
+<figure><img src="figures/railway-health.png" alt="health endpoint" style="max-width:80%"><figcaption>รูปที่ 2 การเรียก <code>/v1/health</code> ของเซิร์ฟเวอร์ทดสอบผ่านเบราว์เซอร์ (19 ส.ค. 2569)</figcaption></figure>
 <h2>6.3 การปรับเทียบ rPPG บนสัญญาณสังเคราะห์</h2>
 <p>ตัวให้คะแนน rPPG ทดสอบด้วยสัญญาณสีผิวสังเคราะห์ (ambient + แอมพลิจูดชีพจร × sin + สัญญาณรบกวนแบบเกาส์ ต่อ patch) ที่อัตราเฟรม 8–30 fps และช่วงเวลา 7 วินาที เทียบกับสัญญาณที่ไม่มีชีพจร (หน้ากาก) ผลแสดงในรูปที่ 3</p>
 <figure><img src="figures/rppg-synthetic.png" alt="rPPG synthetic"><figcaption>รูปที่ 3 การกระจายความเด่นของยอดสเปกตรัม: เมื่อแอมพลิจูดชีพจรสูงกว่าสัญญาณรบกวน ≈ 2 เท่า สองกลุ่มแยกจากกันชัดที่เกณฑ์ 7 dB (ซ้าย); เมื่อใกล้เคียงกันจะซ้อนทับ (ขวา) — เหตุผลที่ชั้นนี้เริ่มต้นเป็น advisory</figcaption></figure>
@@ -205,7 +205,7 @@ $ curl -H "X-API-Key: ****" -H "Content-Type: application/json" \
   <img src="figures/example-intro.png" alt="หน้าแนะนำ">
   <img src="figures/example-capture.png" alt="หน้าจับภาพ">
 </figure>
-<figcaption>รูปที่ 4 แอปตัวอย่าง (apps/example, build 16) บน Android Emulator: หน้าแรกพร้อมช่อง URL เซิร์ฟเวอร์และกุญแจ API (จำค่าใน SecureStore), หน้าแนะนำ, หน้าจับภาพ (กล้อง emulator เป็นภาพจำลอง)</figcaption>
+<figcaption>รูปที่ 4 แอปตัวอย่าง (apps/example, build 16) บน Android Emulator (API 34): หน้าแรกแสดงการเชื่อมต่อเซิร์ฟเวอร์ Railway สำเร็จ (“ok · 0.1.0”) หลังใส่กุญแจ API, หน้าแนะนำ, หน้าจับภาพซึ่งบันทึกวินิจฉัยแสดงว่าเซิร์ฟเวอร์ออกเซสชันและลำดับคำสั่งแล้ว (turnRight, closeEyes, turnLeft) — กล้อง emulator ไม่มีใบหน้าจริงจึงแสดง “ไม่พบใบหน้าในกรอบ”</figcaption>
 </section>
 
 <section class="chapter">
