@@ -218,6 +218,7 @@ export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
         challenge: 'center',
         holdProgress: 0,
         framing: 'ok',
+        stepMetrics: {},
       })
   const t = strings(locale)
   const holding = current.holdProgress > 0.05
