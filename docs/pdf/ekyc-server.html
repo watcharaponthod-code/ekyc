@@ -2,8 +2,9 @@
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<title>เอกสารระบบยืนยันตัวตนด้วยใบหน้าแบบ client–server (eKYC Server บน Railway)</title>
+<title>ระบบยืนยันตัวตนด้วยใบหน้าแบบ client–server (eKYC บน Railway)</title>
 <link rel="stylesheet" href="style.css">
+<style>.cover{height:auto;page-break-after:always;min-height:230mm}</style>
 </head>
 <body>
 
@@ -11,294 +12,152 @@
   <div>
     <div class="org">โครงการ eKYC · เอกสารทางเทคนิค</div>
     <div class="rule"></div>
-    <h1>ระบบยืนยันตัวตนด้วยใบหน้าแบบ client–server<br>พร้อมชั้นป้องกันการปลอมแปลงและหน้ากาก 3 มิติ</h1>
-    <div class="subtitle">eKYC Server — โทรศัพท์เก็บหลักฐาน เซิร์ฟเวอร์ตัดสิน · ทดสอบบน Railway</div>
+    <h1>ระบบยืนยันตัวตนด้วยใบหน้า<br>แบบ client–server</h1>
+    <div class="subtitle">ตรวจความมีชีวิต · ตรวจการปลอมแปลง · ลงทะเบียน / ยืนยัน / ระบุตัวบุคคล — เซิร์ฟเวอร์บน Railway</div>
     <table class="meta">
-      <tr><td>ชื่อระบบ</td><td>eKYC Server (<code>server/</code>) และโมดูล <code>@ekyc/react-native-ekyc</code> พร้อมแอปตัวอย่าง <code>apps/example</code></td></tr>
-      <tr><td>เวอร์ชันเอกสาร</td><td>1.0</td></tr>
+      <tr><td>ชื่อระบบ</td><td>eKYC Server (FastAPI) + แพ็กเกจ <code>@ekyc/react-native-ekyc</code> + แอป <code>apps/example</code></td></tr>
+      <tr><td>เวอร์ชันเอกสาร</td><td>2.0 (server deploy 19 ส.ค. 2569, แอป build 21)</td></tr>
       <tr><td>วันที่จัดทำ</td><td>19 สิงหาคม 2569</td></tr>
-      <tr><td>สถานะ</td><td>ฉบับส่งมอบเพื่อทดสอบภายใน (ไม่ใช่เอกสารรับรองมาตรฐาน)</td></tr>
-      <tr><td>เซิร์ฟเวอร์ทดสอบ</td><td>https://ekyc-api-production-1c11.up.railway.app</td></tr>
-      <tr><td>แหล่งโค้ด</td><td>https://github.com/watcharaponthod-code/ekyc</td></tr>
-      <tr><td>ไฟล์ติดตั้ง</td><td>GitHub Releases ของโครงการ (ไฟล์ <code>ekyc-example-*.apk</code>)</td></tr>
+      <tr><td>สถานะ</td><td>ฉบับส่งมอบเพื่อทดสอบภายใน</td></tr>
+      <tr><td>เซิร์ฟเวอร์ทดสอบ</td><td>https://ekyc-api-production-1c11.up.railway.app (backend onnx, API key ทดสอบฝังในแอป)</td></tr>
+      <tr><td>แหล่งโค้ด / ไฟล์ติดตั้ง</td><td>https://github.com/watcharaponthod-code/ekyc (branch <code>master</code>, Releases <code>server-v1.0.0-b21</code>)</td></tr>
     </table>
   </div>
-  <div class="foot">เอกสารฉบับนี้อธิบายสถาปัตยกรรม ชั้นป้องกัน การติดตั้งบน Railway ผลการทดสอบอ้างอิง วิธีประเมินตามตัวชี้วัด ISO/IEC 30107-3 และข้อจำกัดตามสภาพจริง ณ วันที่จัดทำ ระบบนี้ยังไม่ผ่านการประเมินโดยห้องปฏิบัติการภายนอก และไม่ควรอ้างว่าเป็นไปตามมาตรฐาน ISO/IEC 30107-3</div>
+  <div class="foot" style="margin-top:12mm">ตัวเลขทุกค่าในเอกสารเป็นค่าที่วัดได้จริงในเงื่อนไขที่ระบุ ไม่ใช่การรับรองสมรรถนะโดยหน่วยงานภายนอก</div>
 </div>
 
-<div class="toc">
-  <h1 class="sec">สารบัญ</h1>
-  <ol>
-    <li><span>1. บทนำและวัตถุประสงค์</span></li>
-    <li><span>2. สถาปัตยกรรม</span></li>
-    <li><span>3. ชั้นป้องกันและภัยคุกคามที่รับมือ</span></li>
-    <li class="l2"><span>3.1 ชั้นเดิม</span></li>
-    <li class="l2"><span>3.2 ชั้นที่เพิ่มสำหรับหน้ากาก 3 มิติ / ซิลิโคน</span></li>
-    <li><span>4. การติดตั้งบน Railway</span></li>
-    <li><span>5. ส่วนต่อประสาน (API)</span></li>
-    <li><span>6. การทดสอบและรูปอ้างอิง</span></li>
-    <li class="l2"><span>6.1 การทดสอบอัตโนมัติ</span></li>
-    <li class="l2"><span>6.2 การตรวจสอบเซิร์ฟเวอร์ที่ติดตั้งจริง</span></li>
-    <li class="l2"><span>6.3 การปรับเทียบ rPPG บนสัญญาณสังเคราะห์</span></li>
-    <li class="l2"><span>6.4 หน้าจอของแอปตัวอย่าง</span></li>
-    <li><span>7. การประเมินตามตัวชี้วัด ISO/IEC 30107-3</span></li>
-    <li><span>8. การใช้งานแอปตัวอย่างกับเซิร์ฟเวอร์ทดสอบ</span></li>
-    <li><span>9. ข้อจำกัดและแผนงานถัดไป</span></li>
-    <li><span>ภาคผนวก ก. รหัสเหตุผลจากเซิร์ฟเวอร์</span></li>
-    <li><span>ภาคผนวก ข. ตัวแปรสภาพแวดล้อมที่สำคัญ</span></li>
-  </ol>
-</div>
-
-<section class="chapter">
-<h1 class="sec">1. บทนำและวัตถุประสงค์</h1>
-<p>ระบบ eKYC Server เป็นระบบยืนยันตัวตนด้วยใบหน้าที่แบ่งหน้าที่ชัดเจน: <b>โทรศัพท์</b> ทำหน้าที่โค้ชผู้ใช้ เก็บหลักฐาน (ภาพนิ่งต่อคำสั่ง ภาพช่วง flash สี และภาพต่อเนื่องช่วงวัดชีพจร) และส่งขึ้นเซิร์ฟเวอร์ ส่วน <b>เซิร์ฟเวอร์</b> เป็นผู้ตัดสินแต่เพียงผู้เดียว โดยวัดทุกอย่างซ้ำจากพิกเซล ไม่เชื่อค่าใด ๆ ที่โทรศัพท์รายงาน เพราะอุปกรณ์อยู่ในมือของผู้ที่อาจเป็นผู้โจมตี</p>
-<p>เอกสารฉบับนี้ครอบคลุมงานรอบวันที่ 18 สิงหาคม 2569 ซึ่งเพิ่ม (1) ชั้นป้องกันหน้ากาก 3 มิติและซิลิโคน (2) เครื่องมือประเมินตามตัวชี้วัด ISO/IEC 30107-3 (3) การติดตั้งเซิร์ฟเวอร์ทดสอบบน Railway พร้อมกุญแจ API และ (4) การปรับแอปตัวอย่างให้ใช้กับเซิร์ฟเวอร์ดังกล่าว</p>
-<h2>วัตถุประสงค์</h2>
-<ol>
-  <li>ให้บริการลงทะเบียน (enroll) ยืนยัน 1:1 (verify) และค้นหา 1:N (identify) ด้วยใบหน้า โดยมีการตรวจสอบความมีชีวิตที่เซิร์ฟเวอร์ตรวจได้จริงทุกขั้น</li>
-  <li>รับมือการโจมตีด้วยภาพถ่าย จอภาพ วิดีโอย้อนหลัง การสลับบุคคล การเล่นซ้ำหลักฐาน และ—ในรอบนี้—หน้ากากแข็งและหน้ากากซิลิโคน</li>
-  <li>ให้ทีมวัดสมรรถนะด้วยตัวชี้วัดเดียวกับห้องปฏิบัติการมาตรฐาน ก่อนตัดสินใจส่งประเมินภายนอก</li>
-</ol>
+<section>
+<h1 class="sec">1. ระบบทำอะไร</h1>
+<p>แอปบนโทรศัพท์นำผู้ใช้ทำท่าตามคำสั่ง ถ่ายหลักฐานทุกขั้น แล้วส่งให้เซิร์ฟเวอร์ตัดสินว่า (1) เป็นคนจริงที่ทำท่าตามคำสั่งขณะนั้น (2) ไม่ใช่สื่อปลอม (รูป/จอ/หน้ากาก) (3) เป็นคนเดียวกันตลอดรอบ และ (4) <b>เป็นใคร</b> — ลงทะเบียน (enroll), ยืนยันกับบุคคลที่ระบุ (verify) หรือค้นว่าตรงกับใคร (identify) ผลลัพธ์แสดงชื่อบุคคลและคะแนนตรงบนหน้าจอ</p>
+<table class="data">
+<caption>ตารางที่ 1 ขอบเขตและสถานะ</caption>
+<tr><th style="width:40%">ความสามารถ</th><th>สถานะบนเซิร์ฟเวอร์ทดสอบ (backend onnx)</th></tr>
+<tr><td>คำสั่งท่าทาง: อ้าปาก (ทุกครั้ง) + สุ่ม 3 จาก กระพริบตา · หันซ้าย · หันขวา · ขยับเข้า · ขยับออก</td><td>บังคับ — ทุกท่าเป็นการเคลื่อนไหวเทียบท่ามองตรง; เกณฑ์มุมหันส่งจากเซิร์ฟเวอร์ให้แอป (22° + margin 3°)</td></tr>
+<tr><td>ตรวจการปลอมแปลง 2 มิติ (PAD) — MiniFASNet บนเฟรมท่าทาง</td><td>บังคับ (≥ 0.5) · ค่าที่วัดได้จริงกับคนจริง 0.995+</td></tr>
+<tr><td>มุมหัน/ก้ม จากจุดสำคัญ 5 จุด เทียบเฟรมมองตรง</td><td>บังคับ · ค่าที่หันได้จริง 52–63°</td></tr>
+<tr><td>ความเป็นคนเดียวกันตลอดรอบ (ArcFace ทุกเฟรม)</td><td>บังคับ (≥ 0.35) · วัดได้จริง 0.61–0.72</td></tr>
+<tr><td>คุณภาพภาพ (ความคม สว่าง ขนาด มุมเอียง)</td><td>บังคับ — สาเหตุตกที่พบจริง: <code>QUALITY_SHARPNESS</code> ภาพมองตรงเบลอ</td></tr>
+<tr><td>ตาหลับ/ลืม (EAR)</td><td><b>advisory บน onnx</b> — จุดสำคัญ 5 จุดวัดตาเป็นค่าประมาณ (ตกทั้ง 4 รอบทดสอบทั้งที่กระพริบจริง) → เปลี่ยนเป็นบันทึกอย่างเดียว; บังคับเมื่อใช้ backend deepface (MediaPipe)</td></tr>
+<tr><td>แสงสีจากหน้าจอ 4 สี สะท้อนบนใบหน้า</td><td>advisory · วัดได้จริง 0.82–0.92 (เกณฑ์ 0.5) — พร้อมเปิดบังคับเมื่อมีข้อมูลโจมตี</td></tr>
+<tr><td>ชีพจรจากสีผิว (rPPG), ระนาบภาพ, ร่องรอยฉีดภาพ, attestation ของเครื่อง</td><td>advisory / ตรวจการมีอยู่</td></tr>
+<tr><td>อ้าปาก/ยิ้ม วัดจาก blendshape (MediaPipe)</td><td>เฉพาะ backend deepface — บน onnx แอปบังคับท่าเอง (contours ML Kit) เซิร์ฟเวอร์ไม่ซ้ำ</td></tr>
+<tr><td>หน้ากาก 3 มิติ / ซิลิโคน</td><td>ชั้นกัน: อ้าปากบังคับ (หน้ากากแข็ง), PAD, rPPG (advisory), flash (advisory) — <b>ไม่มีการรับรอง ISO/IEC 30107-3</b> (ต้องห้องปฏิบัติการที่ได้รับการรับรอง); มีเครื่องมือประเมินแบบเดียวกับมาตรฐาน</td></tr>
+<tr><td>เก็บหลักฐานทุก shot</td><td>เปิดอยู่ (<code>EKYC_RETAIN_FRAMES=all</code>) ลง volume ถาวร <code>/data/retained</code> ดูผ่านหน้า gallery</td></tr>
+</table>
 </section>
 
 <section class="chapter">
-<h1 class="sec">2. สถาปัตยกรรม</h1>
+<h1 class="sec">2. สถาปัตยกรรมและขั้นตอน</h1>
 <figure class="diagram">
-<svg viewBox="0 0 760 330" width="760" height="330" xmlns="http://www.w3.org/2000/svg" font-family="TH Sarabun New" font-size="16">
-  <defs><marker id="b" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#1f3a5f"/></marker></defs>
-  <rect x="10" y="10" width="330" height="310" rx="10" fill="none" stroke="#9a9a9a" stroke-dasharray="6 4"/>
-  <text x="24" y="34" font-size="15" fill="#444">โทรศัพท์ (@ekyc/react-native-ekyc)</text>
-  <rect x="30" y="50" width="290" height="58" rx="8" fill="#eef2f7" stroke="#1f3a5f"/>
-  <text x="175" y="74" text-anchor="middle" font-weight="700">ML Kit — โค้ชผู้ใช้ (ไม่มีอำนาจตัดสิน)</text>
-  <text x="175" y="96" text-anchor="middle" font-size="14">กรอบ / มุมหัน / ตา / ปาก เพื่อเลือกจังหวะถ่าย</text>
-  <rect x="30" y="122" width="290" height="88" rx="8" fill="#eef2f7" stroke="#1f3a5f"/>
-  <text x="175" y="146" text-anchor="middle" font-weight="700">หลักฐานต่อเซสชัน</text>
-  <text x="175" y="168" text-anchor="middle" font-size="14">neutral + ภาพต่อคำสั่ง (server สุ่มลำดับ)</text>
-  <text x="175" y="188" text-anchor="middle" font-size="14">pulse_0..n (rPPG) · flash_0..3 · manifest + attestation</text>
-  <rect x="30" y="224" width="290" height="58" rx="8" fill="#ffffff" stroke="#1f3a5f"/>
-  <text x="175" y="248" text-anchor="middle" font-weight="700">POST /v1/sessions/{id}/submit</text>
-  <text x="175" y="270" text-anchor="middle" font-size="14">X-API-Key · nonce · one-shot</text>
-  <line x1="340" y1="253" x2="408" y2="253" stroke="#1f3a5f" stroke-width="2" marker-end="url(#b)"/>
-  <rect x="410" y="10" width="340" height="310" rx="10" fill="none" stroke="#9a9a9a" stroke-dasharray="6 4"/>
-  <text x="424" y="34" font-size="15" fill="#444">เซิร์ฟเวอร์ (FastAPI บน Railway)</text>
-  <rect x="430" y="50" width="300" height="60" rx="8" fill="#eef2f7" stroke="#1f3a5f"/>
-  <text x="580" y="74" text-anchor="middle" font-weight="700">วัดจากพิกเซล</text>
-  <text x="580" y="96" text-anchor="middle" font-size="14">ตรวจจับ · pose · EAR · blendshapes · PAD · embedding · สีผิว</text>
-  <rect x="430" y="124" width="300" height="86" rx="8" fill="#eef2f7" stroke="#1f3a5f"/>
-  <text x="580" y="148" text-anchor="middle" font-weight="700">decision.py — กฎตัดสิน</text>
-  <text x="580" y="170" text-anchor="middle" font-size="14">โครงสร้าง · คุณภาพ · PAD · ท่าทาง · ตา · อ้าปาก/ยิ้ม</text>
-  <text x="580" y="190" text-anchor="middle" font-size="14">อัตลักษณ์สอดคล้อง · flash · rPPG · injection · attestation</text>
-  <rect x="430" y="224" width="140" height="58" rx="8" fill="#ffffff" stroke="#1f3a5f"/>
-  <text x="500" y="248" text-anchor="middle" font-weight="700">Postgres</text>
-  <text x="500" y="270" text-anchor="middle" font-size="14">แม่แบบ 512 มิติ · audit</text>
-  <rect x="590" y="224" width="140" height="58" rx="8" fill="#ffffff" stroke="#9a9a9a" stroke-dasharray="4 3"/>
-  <text x="660" y="248" text-anchor="middle" font-size="14">retention (evaluation)</text>
-  <text x="660" y="270" text-anchor="middle" font-size="14">→ pad_eval.py</text>
-  <text x="380" y="300" text-anchor="middle" font-size="14" fill="#444">โทรศัพท์ไม่เก็บข้อมูลชีวมิติ · เซิร์ฟเวอร์เก็บเฉพาะเวกเตอร์ ไม่เก็บภาพ (ยกเว้นโหมด evaluation)</text>
+<svg viewBox="0 0 760 260" width="760" height="260" xmlns="http://www.w3.org/2000/svg" font-family="TH Sarabun New" font-size="16">
+  <defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#1f3a5f"/></marker></defs>
+  <rect x="10" y="10" width="300" height="235" rx="10" fill="#f6f8fb" stroke="#9aa7b8"/><text x="160" y="34" text-anchor="middle" font-weight="700">โทรศัพท์ (React Native + ML Kit)</text>
+  <rect x="25" y="50" width="270" height="40" rx="6" fill="#fff" stroke="#1f3a5f"/><text x="160" y="75" text-anchor="middle">สร้าง session → รับคำสั่ง + เกณฑ์ (policy)</text>
+  <rect x="25" y="100" width="270" height="40" rx="6" fill="#fff" stroke="#1f3a5f"/><text x="160" y="125" text-anchor="middle">มองตรง → 4 ท่า (ทำ→กลับ, มองตรงคั่น)</text>
+  <rect x="25" y="150" width="270" height="40" rx="6" fill="#fff" stroke="#1f3a5f"/><text x="160" y="175" text-anchor="middle">แสงจอ 4 สี · ถ่ายหลักฐานทุกขั้น (JPEG)</text>
+  <rect x="25" y="200" width="270" height="35" rx="6" fill="#fff" stroke="#1f3a5f"/><text x="160" y="222" text-anchor="middle">แสดงผล: ผ่าน/ไม่ผ่าน · "ยืนยันแล้วว่าเป็น: ชื่อ (xx%)"</text>
+  <line x1="310" y1="120" x2="348" y2="120" stroke="#1f3a5f" stroke-width="2" marker-end="url(#a)"/><text x="330" y="110" text-anchor="middle" font-size="13">HTTPS + API key</text>
+  <rect x="350" y="10" width="400" height="235" rx="10" fill="#f6f8fb" stroke="#9aa7b8"/><text x="550" y="34" text-anchor="middle" font-weight="700">Railway: FastAPI + onnxruntime + PostgreSQL + volume</text>
+  <rect x="365" y="50" width="370" height="40" rx="6" fill="#fff" stroke="#1f3a5f"/><text x="550" y="68" text-anchor="middle">วัดทุกเฟรมขนานกัน: ตรวจจับ · จุดสำคัญ · PAD · ArcFace · สีใบหน้า</text><text x="550" y="84" text-anchor="middle" font-size="13">(เฟรม flash วัดเฉพาะสีใบหน้า — เบา)</text>
+  <rect x="365" y="100" width="370" height="40" rx="6" fill="#fff" stroke="#1f3a5f"/><text x="550" y="125" text-anchor="middle">Decision engine: gates บังคับ + advisory → เหตุผล + คะแนน</text>
+  <rect x="365" y="150" width="370" height="40" rx="6" fill="#fff" stroke="#1f3a5f"/><text x="550" y="175" text-anchor="middle">Enroll / Verify / Identify (template ArcFace, cosine ≥ 0.5)</text>
+  <rect x="365" y="200" width="370" height="35" rx="6" fill="#fff" stroke="#1f3a5f"/><text x="550" y="222" text-anchor="middle">เก็บหลักฐาน + audit (/v1/audit, gallery) + log "serverMs"</text>
 </svg>
-<figcaption>รูปที่ 1 การแบ่งหน้าที่ระหว่างโทรศัพท์และเซิร์ฟเวอร์</figcaption>
+<figcaption>รูปที่ 1 โครงสร้างระบบและลำดับหนึ่งรอบ</figcaption>
 </figure>
 <table class="data">
-<caption>ตารางที่ 1 องค์ประกอบ</caption>
-<tr><th style="width:26%">ส่วน</th><th>เทคโนโลยี</th></tr>
-<tr><td>โมดูลโทรศัพท์</td><td>React Native, react-native-vision-camera, ML Kit (face detector), <code>@ekyc/react-native-ekyc</code></td></tr>
-<tr><td>เซิร์ฟเวอร์</td><td>Python 3.12, FastAPI, SQLAlchemy; backend การมองเห็นเลือกได้: <code>deepface</code> (MediaPipe Face Landmarker + DeepFace ArcFace + MiniFASNet ensemble) หรือ <code>onnx</code> (SCRFD + ArcFace + MiniFASNet ผ่าน onnxruntime — ใช้บน Railway)</td></tr>
-<tr><td>ฐานข้อมูล</td><td>PostgreSQL (Railway) — บุคคล แม่แบบ เซสชัน บันทึกตรวจสอบ</td></tr>
-<tr><td>การติดตั้ง</td><td>Docker image (python:3.12-slim + onnxruntime, ดึงน้ำหนักโมเดลตอน build) บน Railway</td></tr>
+<caption>ตารางที่ 2 API หลัก (ทุก endpoint ยกเว้น /health ต้องมี <code>X-API-Key</code>)</caption>
+<tr><th style="width:38%">Endpoint</th><th>หน้าที่</th></tr>
+<tr><td><code>POST /v1/sessions</code></td><td>สร้างรอบ: purpose (enroll/verify/identify), tier → คืน sessionId, รายการท่า, จำนวนเฟรม flash, policy (เกณฑ์มุม), nonce</td></tr>
+<tr><td><code>POST /v1/sessions/{id}/submit</code></td><td>multipart: เฟรมชื่อ neutral / turnLeft / … / flash_0..3 (+ pulse) → <code>decision, reasons, scores, personId, displayName, match, serverMs</code></td></tr>
+<tr><td><code>GET /v1/audit</code>, <code>/v1/audit/gallery?key=</code>, <code>/v1/audit/{id}/frames</code></td><td>สรุปรอบล่าสุด (อัตราผ่าน เหตุผล การกระจายคะแนน) · หน้าเว็บ thumbnail ทุกภาพต่อรอบ · ภาพรายรอบ</td></tr>
+<tr><td><code>GET /health</code></td><td>สถานะ + backend</td></tr>
 </table>
+<h2>2.1 ตั้งค่าเซิร์ฟเวอร์ทดสอบ (ตัวแปรสภาพแวดล้อมบน Railway)</h2>
+<p class="small"><code>EKYC_BACKEND=onnx</code> · <code>EKYC_API_KEYS=…</code> · <code>EKYC_NEUTRAL_YAW_MAX_DEG=45</code> · <code>EKYC_FLASH_FRAMES=4</code> · <code>EKYC_FLASH_RULE=advisory</code> · <code>EKYC_EYE_RULE=advisory</code> · <code>EKYC_RETAIN_FRAMES=all</code> · <code>EKYC_FRAMES_DIR=/data/retained</code> · <code>DATABASE_URL</code> (PostgreSQL) — โมเดลดาวน์โหลดตอน build image (<code>scripts/fetch_models.py onnx</code>) · redeploy: <code>cd server && railway up --service ekyc-api --detach</code></p>
 </section>
 
 <section class="chapter">
-<h1 class="sec">3. ชั้นป้องกันและภัยคุกคามที่รับมือ</h1>
-<h2>3.1 ชั้นเดิม</h2>
+<h1 class="sec">3. เกณฑ์การตัดสิน</h1>
 <table class="data">
-<caption>ตารางที่ 2 ชั้นป้องกันเดิมและภัยคุกคามที่จับได้</caption>
-<tr><th style="width:30%">ชั้น</th><th>ภัยคุกคาม</th></tr>
-<tr><td>MiniFASNet PAD (ทั้งเฟรม + กรอบใบหน้า)</td><td>ภาพถ่าย จอภาพ วิดีโอย้อนหลัง (AUC 1.000 บน screen replay ที่วัดไว้, n=70)</td></tr>
-<tr><td>คำสั่งสุ่มลำดับโดยเซิร์ฟเวอร์ + ตรวจ pose/EAR ซ้ำจากพิกเซล</td><td>วิดีโอที่อัดไว้ล่วงหน้า</td></tr>
-<tr><td>Flash สีสุ่มจากหน้าจอ (`flash.py`)</td><td>ภาพถ่าย/จอ/สตรีมที่ฉีดเข้ามา — ผิวหนังจริงต้องสะท้อนสีตามลำดับที่สุ่ม</td></tr>
-<tr><td>Nonce + TTL 120 วินาที + one-shot + hash ของเฟรม</td><td>เล่นซ้ำหลักฐานเดิม, สตรีมนิ่ง</td></tr>
-<tr><td>ความสอดคล้องของอัตลักษณ์ (ArcFace ทุกคู่ภาพ)</td><td>ผ่าน liveness ด้วยคน A แล้วส่งภาพคน B</td></tr>
-<tr><td>Planarity (advisory)</td><td>ภาพแบน/ข้อมูลผิดปกติ (จับภาพถ่ายไม่ได้ ตามที่วัดไว้)</td></tr>
+<caption>ตารางที่ 3 gates และเกณฑ์ (ปรับผ่าน env / <code>config.py</code>; ทุกค่ามีที่มา ไม่ใช่ค่าเดา)</caption>
+<tr><th style="width:22%">gate</th><th style="width:38%">เงื่อนไข</th><th>ที่มา / ค่าที่วัดได้จริง</th></tr>
+<tr><td>โครงสร้าง</td><td>เฟรมครบทุกท่าที่สั่ง 1 ใบหน้าหลักต่อเฟรม nonce ตรง</td><td>—</td></tr>
+<tr><td>คุณภาพ</td><td>ความคม (Laplacian var) ≥ 60, สว่าง 40–220, ใบหน้า ≥ 112 px, roll ≤ 25°</td><td>ตกจริง: ภาพมองตรงเบลอ 2/8 รอบ → คำแนะนำ "ถือนิ่ง"</td></tr>
+<tr><td>PAD</td><td>ค่าเฉลี่ย MiniFASNet บนเฟรมท่าทาง ≥ 0.5</td><td>คนจริง 0.995–0.999</td></tr>
+<tr><td>ท่าทาง</td><td>Δyaw ≥ 22° (ซ้าย/ขวา) เทียบมองตรง; มองตรง |yaw| ≤ 45°</td><td>หันได้จริง 52–63°; เกณฑ์ส่งให้แอป (+3°) จึงไม่ขัดกัน</td></tr>
+<tr><td>ตา</td><td>EAR ปิด ≤ 0.18 ลืม ≥ 0.22</td><td>onnx = advisory (ดูตารางที่ 1)</td></tr>
+<tr><td>คนเดียวกัน</td><td>cosine ArcFace ทุกเฟรมเทียบมองตรง ≥ 0.35 (รวม pulse frames)</td><td>0.61–0.72 (ท่าหันทำให้ต่ำกว่าภาพตรง เป็นปกติ)</td></tr>
+<tr><td>แสงจอ</td><td>correlation ต่อ channel ≥ 0.5 (advisory)</td><td>0.82–0.92</td></tr>
+<tr><td>ชีพจร</td><td>rPPG prominence ≥ 7 dB (advisory, ต้อง pulse burst)</td><td>ยังไม่มีตัวเลขจากเครื่องจริงพอ</td></tr>
+<tr><td>Match</td><td>cosine กับ template ≥ 0.5</td><td>identify จริง 0.84</td></tr>
 </table>
-<h2>3.2 ชั้นที่เพิ่มสำหรับหน้ากาก 3 มิติ / ซิลิโคน</h2>
-<p>คนที่สวมหน้ากากซิลิโคนหันหัวได้ กระพริบตาได้ (ตาจริงอยู่หลังรู) และสะท้อนแสง flash ได้เหมือนผิวหนัง ชั้นเดิมทั้งหมดจึงไม่ได้ออกแบบมาจับกรณีนี้ รอบนี้เพิ่มสองชั้นที่ตอบสมบัติทางกายภาพที่หน้ากากไม่มี</p>
-<table class="data">
-<caption>ตารางที่ 3 ชั้นป้องกันใหม่</caption>
-<tr><th style="width:22%">ชั้น</th><th>วิธีการ</th><th style="width:22%">จับอะไร</th><th style="width:16%">สถานะ</th></tr>
-<tr><td>คำสั่งอ้าปาก / ยิ้ม ที่เซิร์ฟเวอร์ตรวจได้</td><td>วัด <code>jawOpen</code> / <code>mouthSmile*</code> จาก MediaPipe blendshapes บนเฟรมคำสั่ง เทียบเฟรม neutral ของบุคคลเดียวกัน ต้องผ่านทั้งค่าสัมบูรณ์ (≥ 0.35 / 0.45) และค่าเปลี่ยนแปลง (≥ 0.20 / 0.25); เซิร์ฟเวอร์ออกคำสั่งนี้เฉพาะเมื่อ backend วัดได้ และ full tier บังคับมีอ้าปากทุกครั้งในตำแหน่งสุ่ม</td><td>หน้ากากแข็ง (3D-print, resin, กระดาษ, latex) ขากรรไกรอ้าไม่ได้; ซิลิโคนยืดหยุ่นจับได้บางส่วน</td><td>บังคับใช้ (enforce)</td></tr>
-<tr><td>rPPG pulse liveness</td><td>หลังคำสั่งครบ ผู้ใช้อยู่นิ่ง 7–8 วินาที แอปถ่ายภาพต่อเนื่อง เซิร์ฟเวอร์อ่านสีเฉลี่ยของหน้าผากและแก้มสองข้าง (MediaPipe landmarks) ต่อเฟรม → POS projection → สเปกตรัมช่วง 0.7–3 Hz เฉลี่ยข้าม 3 patch → ความเด่นของยอด (dB) → คะแนน</td><td>ซิลิโคน / latex — ไม่มีเลือดไหลเวียน ไม่มีชีพจร</td><td>advisory (บันทึกคะแนน ไม่ตัดสิน) จนกว่าจะวัดบนโทรศัพท์จริง</td></tr>
-<tr><td>Identity anchor ของ pulse</td><td>เฟรมแรก/สุดท้ายของช่วง pulse ถูกฝังและรวมเข้าการตรวจอัตลักษณ์สอดคล้อง</td><td>บุคคลจริงมาถ่ายช่วง pulse แทนผู้สวมหน้ากาก</td><td>บังคับใช้</td></tr>
-<tr><td>ขอบเขต PAD</td><td>ค่า PAD ต่ำสุดคิดเฉพาะเฟรมคำสั่ง (เฟรม flash สีจัดถูกตัดออก)</td><td>ลด false reject</td><td>บังคับใช้</td></tr>
-<tr><td>กุญแจ API</td><td><code>X-API-Key</code> หรือ <code>Authorization: Bearer</code> ทุกเส้นทางยกเว้น <code>/v1/health</code></td><td>API เปิดสาธารณะ</td><td>บังคับใช้บน Railway</td></tr>
-<tr><td>Attestation hook</td><td>แอปส่ง token Play Integrity / App Attest ในกล่องหลักฐาน; เซิร์ฟเวอร์บังคับได้ด้วย <code>EKYC_REQUIRE_ATTESTATION</code></td><td>สตรีมที่ฉีดบนเครื่อง root</td><td>ตรวจการมีอยู่เท่านั้น ยังไม่ verify กับ Google/Apple</td></tr>
-</table>
-<div class="note warn"><b>ข้อจำกัดสำคัญ:</b> คำสั่งอ้าปาก/ยิ้มต้องใช้ backend <code>deepface</code> (MediaPipe blendshapes) เซิร์ฟเวอร์ทดสอบบน Railway ใช้ backend <code>onnx</code> จึง<b>ไม่ออกคำสั่งนี้</b>โดยอัตโนมัติ; rPPG ทำงานได้กับทุก backend แต่บน onnx ใช้ patch เดียว (กลางกรอบใบหน้า) ซึ่งอ่อนกว่า</div>
+<h2>3.1 ท่าทางฝั่งแอป (ทำไมค้างท่าเดียวไม่ผ่าน)</h2>
+<p>ทุกท่าเทียบกับ baseline ของคนคนนั้น ท่า 2 ช่วง (กระพริบ อ้าปาก ขยับเข้า/ออก) ถ่ายหลักฐานที่ช่วงแรกและต้องผ่านช่วงกลับ (ลืมตา หุบปาก กลับระยะเดิม) ระหว่างท่าต้องกลับมามองตรง (±12°) และทุกขั้นบันทึก "ทำได้/ต้องการ" ลง telemetry — ชุดทดสอบ <code>motion.test.ts</code> ยืนยันว่าไม่มีท่าใดผ่านด้วยท่าค้างหรือรูปนิ่ง</p>
 </section>
 
 <section class="chapter">
-<h1 class="sec">4. การติดตั้งบน Railway</h1>
-<table class="data kv">
-<caption>ตารางที่ 4 ข้อมูลเซิร์ฟเวอร์ทดสอบ</caption>
-<tr><td>URL</td><td><code>https://ekyc-api-production-1c11.up.railway.app</code></td></tr>
-<tr><td>โครงการ / บริการ</td><td>Railway project <code>ekyc-server</code> → service <code>ekyc-api</code> + <code>Postgres</code></td></tr>
-<tr><td>Builder</td><td>Dockerfile (<code>server/Dockerfile</code>) — python:3.12-slim, onnxruntime, ดึงน้ำหนักโมเดล ONNX (~200 MB, ตรวจ SHA-256) ตอน build</td></tr>
-<tr><td>Backend</td><td><code>onnx</code>; ตั้ง <code>EKYC_NEUTRAL_YAW_MAX_DEG=45</code> ตามที่ต้องใช้กับ backend นี้</td></tr>
-<tr><td>Flash / Pulse</td><td>flash เปิด 4 เฟรม; pulse ปิด (เปิดได้ด้วย <code>EKYC_PULSE_FRAMES=90</code>, <code>EKYC_PULSE_DURATION_MS=8000</code>)</td></tr>
-<tr><td>กุญแจ API</td><td>อยู่ใน Railway → Variables → <code>EKYC_API_KEYS</code> เท่านั้น ไม่อยู่ในซอร์สโค้ด หมุนเปลี่ยนได้ที่นั่น</td></tr>
-<tr><td>ฐานข้อมูล</td><td><code>DATABASE_URL</code> อ้างอิงบริการ Postgres อัตโนมัติ; ตารางสร้างตอนเริ่มระบบ</td></tr>
-<tr><td>Healthcheck</td><td><code>/v1/health</code> (เปิดโดยไม่ต้องใช้กุญแจ)</td></tr>
-<tr><td>Redeploy</td><td><code>cd server &amp;&amp; railway up --service ekyc-api --detach</code></td></tr>
-</table>
-<h2>บันทึกปัญหาที่พบระหว่างติดตั้ง</h2>
-<p>การ deploy ครั้งแรกล้มเหลวที่ขั้น healthcheck เนื่องจาก <code>startCommand</code> ใน <code>railway.json</code> ระบุ <code>--port $PORT</code> ซึ่ง Railway เรียกใช้โดยไม่ผ่าน shell ค่า <code>$PORT</code> จึงไม่ถูกแทนที่ (uvicorn รายงาน “'$PORT' is not a valid integer”) แก้ไขโดยลบ <code>startCommand</code> ออก และใช้ <code>CMD ["sh","-c","uvicorn ... --port ${PORT:-8000}"]</code> ใน Dockerfile แทน การ deploy ครั้งที่สองผ่าน healthcheck และให้บริการตามปกติ</p>
-</section>
-
-<section class="chapter">
-<h1 class="sec">5. ส่วนต่อประสาน (API)</h1>
+<h1 class="sec">4. ผลการทดสอบอ้างอิง</h1>
 <table class="data">
-<caption>ตารางที่ 5 เส้นทาง API เวอร์ชัน 1</caption>
-<tr><th style="width:38%">เส้นทาง</th><th>หน้าที่</th></tr>
-<tr><td><code>GET /v1/health</code></td><td>สถานะ, backend, โมเดลที่โหลด (ไม่ต้องใช้กุญแจ)</td></tr>
-<tr><td><code>POST /v1/sessions</code></td><td>สร้างเซสชัน: <code>{purpose: enroll|verify|identify, personId?, displayName?, tier?, label?}</code> → sessionId, nonce, ลำดับคำสั่ง, แผน flash, แผน pulse, นโยบายเวลา</td></tr>
-<tr><td><code>POST /v1/sessions/{id}/submit</code></td><td>multipart: <code>manifest</code> (JSON) + <code>frames</code> (ไฟล์ <code>neutral.jpg</code>, <code>&lt;challenge&gt;.jpg</code>, <code>flash_i.jpg</code>, <code>pulse_i.jpg</code>) → <code>{decision, reasons, scores, personId?, match?}</code></td></tr>
-<tr><td><code>GET /v1/persons</code></td><td>รายชื่อบุคคลที่ลงทะเบียน</td></tr>
-<tr><td><code>DELETE /v1/persons/{id}</code></td><td>ลบบุคคลและแม่แบบ</td></tr>
-<tr><td><code>POST /v1/client-log</code></td><td>บรรทัดวินิจฉัยจากโทรศัพท์</td></tr>
+<caption>ตารางที่ 4 การทดสอบอัตโนมัติ</caption>
+<tr><th style="width:36%">ชุดทดสอบ</th><th style="width:16%">ผล</th><th>ครอบคลุม</th></tr>
+<tr><td>Server (pytest, backend fake)</td><td>154 ผ่าน</td><td>ทุก gate, นโยบายสุ่มท่า, API key, retention, audit/gallery, flash เบา + วัดขนาน, displayName ใน enroll/verify/identify, serverMs</td></tr>
+<tr><td>Core client (jest)</td><td>129 ผ่าน</td><td>LivenessSession, ทุก Challenge, ท่า 2 ช่วง, recenter, tuning จาก policy, telemetry</td></tr>
+<tr><td>PAD harness <code>scripts/pad_eval.py</code></td><td>พร้อมใช้</td><td>APCER / BPCER / ACER / NRR ต่อชนิดการโจมตี พร้อม Wilson CI — แบบเดียวกับ ISO/IEC 30107-3 (ผลจริงต้องใช้ชุดโจมตีจริง)</td></tr>
 </table>
-<p>ทุกเส้นทางยกเว้น health ต้องส่ง <code>X-API-Key: &lt;key&gt;</code> มิฉะนั้นได้ 401 (ไม่มีกุญแจ) หรือ 403 (กุญแจผิด)</p>
-</section>
-
-<section class="chapter">
-<h1 class="sec">6. การทดสอบและรูปอ้างอิง</h1>
-<h2>6.1 การทดสอบอัตโนมัติ</h2>
+<h2>4.1 ข้อมูลจากเซิร์ฟเวอร์จริง (Railway, 18–19 ส.ค. 2569)</h2>
 <table class="data">
-<caption>ตารางที่ 6 ผลชุดทดสอบอัตโนมัติ (18 ส.ค. 2569)</caption>
-<tr><th style="width:38%">ชุดทดสอบ</th><th style="width:18%">ผล</th><th>ครอบคลุม</th></tr>
-<tr><td>เซิร์ฟเวอร์ — fast suite (pytest, ไม่ต้องใช้โมเดล)</td><td>151 ผ่าน / 151 (เดิม 84)</td><td>กฎตัดสินทุกข้อ รวมอ้าปาก/ยิ้ม, PAD scope, rPPG (scorer + decision + API), กุญแจ API, retention, pad_eval, flash, injection, planarity, API end-to-end ด้วย backend จำลอง</td></tr>
-<tr><td>เซิร์ฟเวอร์ — model suite (pytest -m models)</td><td>42 รายการ (ต้องมีน้ำหนักโมเดล; ไม่ได้รันในรอบนี้)</td><td>MediaPipe/DeepFace/ONNX บนภาพจริง, end-to-end enroll → verify → identify</td></tr>
-<tr><td>โมดูลโทรศัพท์ (jest)</td><td>105 ผ่าน / 105 (เดิม 96)</td><td>LivenessSession, ทุก Challenge, mouthOpenness, ข้อความทุกรหัส, EKYCClient (กุญแจ API)</td></tr>
+<caption>ตารางที่ 5 รอบทดสอบจากโทรศัพท์จริง (จาก <code>/v1/audit</code> และ log)</caption>
+<tr><th>ชุด</th><th>รอบ</th><th>ผล</th><th>ค่าที่วัดได้</th></tr>
+<tr><td>build 20 ก่อนแก้ตา</td><td>4</td><td>ตกทั้งหมดด้วย <code>EYES_NOT_CLOSED</code> แม้กระพริบจริง</td><td>PAD 0.995+, flash 0.82–0.92, identity 0.61–0.72, หัน 52–63°</td></tr>
+<tr><td>หลังตั้ง eye=advisory</td><td>4</td><td>enroll ผ่าน · identify ผ่าน (match 0.84) · 2 รอบตก <code>QUALITY_SHARPNESS</code></td><td>ทุก gate อื่นผ่าน</td></tr>
 </table>
-<h2>6.2 การตรวจสอบเซิร์ฟเวอร์ที่ติดตั้งจริง</h2>
-<p>ผลการเรียกใช้จริงหลัง deploy (18 ส.ค. 2569 เวลา 15:20 น. ตามเวลาไทย):</p>
-<pre>$ curl https://ekyc-api-production-1c11.up.railway.app/v1/health
-{"status":"ok","version":"0.1.0","backend":"onnx","models":{"detector":true,"embedder":true,"pad":true}}
-
-$ curl -o /dev/null -w "%{http_code}" https://ekyc-api-production-1c11.up.railway.app/v1/persons
-401                                             ← ไม่มีกุญแจ
-
-$ curl -H "X-API-Key: ****" .../v1/persons
-[]
-
-$ curl -H "X-API-Key: ****" -H "Content-Type: application/json" \
-     -d '{"purpose":"enroll","displayName":"smoke"}' .../v1/sessions
-{"sessionId":"s_39127d65e69f712d2baf0203","nonce":"4Mef…","challenges":["closeEyes","turnLeft","turnRight"],
- "flash":["green","white","red","blue"],"pulse":null,"expiresAt":"2026-08-18T08:22:41Z",
- "policy":{"holdMs":400,"perStepTimeoutMs":12000,"totalTimeoutMs":60000}}</pre>
-<figure><img src="figures/railway-health.png" alt="health endpoint" style="max-width:80%"><figcaption>รูปที่ 2 การเรียก <code>/v1/health</code> ของเซิร์ฟเวอร์ทดสอบผ่านเบราว์เซอร์ (19 ส.ค. 2569)</figcaption></figure>
-<h2>6.3 การปรับเทียบ rPPG บนสัญญาณสังเคราะห์</h2>
-<p>ตัวให้คะแนน rPPG ทดสอบด้วยสัญญาณสีผิวสังเคราะห์ (ambient + แอมพลิจูดชีพจร × sin + สัญญาณรบกวนแบบเกาส์ ต่อ patch) ที่อัตราเฟรม 8–30 fps และช่วงเวลา 7 วินาที เทียบกับสัญญาณที่ไม่มีชีพจร (หน้ากาก) ผลแสดงในรูปที่ 3</p>
-<figure><img src="figures/rppg-synthetic.png" alt="rPPG synthetic"><figcaption>รูปที่ 3 การกระจายความเด่นของยอดสเปกตรัม: เมื่อแอมพลิจูดชีพจรสูงกว่าสัญญาณรบกวน ≈ 2 เท่า สองกลุ่มแยกจากกันชัดที่เกณฑ์ 7 dB (ซ้าย); เมื่อใกล้เคียงกันจะซ้อนทับ (ขวา) — เหตุผลที่ชั้นนี้เริ่มต้นเป็น advisory</figcaption></figure>
-<h2>6.4 หน้าจอของแอปตัวอย่าง</h2>
+<p><b>ความเร็ว:</b> รอบ build 20 รอผล ~10 วินาที สาเหตุ: เฟรม flash 4 ภาพถูกวัดเต็ม (PAD + ArcFace) และวัดทีละเฟรม build 21 + deploy ล่าสุด: เฟรม flash วัดเฉพาะสีใบหน้า, วัดทุกเฟรมขนาน 4 threads, เฟรม flash ส่งเป็น JPEG คุณภาพ 60; เซิร์ฟเวอร์รายงาน <code>serverMs</code> ในผลลัพธ์และ log ทุกรอบ เพื่อใช้ตัดสินรอบถัดไปว่าส่วนที่เหลือคือประมวลผลหรือการอัปโหลด (ถ้าเป็นอัปโหลด: ย่อภาพฝั่งแอปก่อนส่ง)</p>
 <figure class="shots">
   <img src="figures/example-home.png" alt="หน้าแรก">
   <img src="figures/example-intro.png" alt="หน้าแนะนำ">
   <img src="figures/example-capture.png" alt="หน้าจับภาพ">
 </figure>
-<figcaption>รูปที่ 4 แอปตัวอย่าง (apps/example, build 16) บน Android Emulator (API 34): หน้าแรกแสดงการเชื่อมต่อเซิร์ฟเวอร์ Railway สำเร็จ (“ok · 0.1.0”) หลังใส่กุญแจ API, หน้าแนะนำ, หน้าจับภาพซึ่งบันทึกวินิจฉัยแสดงว่าเซิร์ฟเวอร์ออกเซสชันและลำดับคำสั่งแล้ว (turnRight, closeEyes, turnLeft) — กล้อง emulator ไม่มีใบหน้าจริงจึงแสดง “ไม่พบใบหน้าในกรอบ”</figcaption>
+<figcaption>รูปที่ 2 แอปตัวอย่างบน Android Emulator: หน้าแรก (เลือก enroll/verify/identify) / หน้าแนะนำ / หน้าจับภาพ (build 21 ฝัง API key ทดสอบ ไม่ต้องกรอก; แสดงชื่อบุคคลบนหน้าผลลัพธ์)</figcaption>
+<figure><img src="figures/railway-health.png" alt="health" style="max-width:70%"><figcaption>รูปที่ 3 <code>/health</code> ของเซิร์ฟเวอร์บน Railway (backend onnx)</figcaption></figure>
 </section>
 
 <section class="chapter">
-<h1 class="sec">7. การประเมินตามตัวชี้วัด ISO/IEC 30107-3</h1>
-<p>ISO/IEC 30107-3 เป็นมาตรฐานว่าด้วย <b>วิธีทดสอบ</b> การตรวจจับการโจมตีด้วยสื่อปลอม การ “ผ่าน” มาตรฐานนี้หมายถึงห้องปฏิบัติการที่ได้รับการรับรอง (เช่น iBeta, Fime) นำเครื่องมือโจมตี (PAI) จริงมาทดสอบตามโปรโตคอลของตนแล้วรายงานผล จึง<b>ไม่สามารถทำให้ผ่านได้ด้วยโค้ดเพียงอย่างเดียว</b> สิ่งที่โครงการจัดทำคือเครื่องมือวัดด้วยตัวชี้วัดเดียวกัน เพื่อให้ตัวเลขที่จะนำไปยื่นมีความน่าเชื่อถือ และพบช่องโหว่ก่อนห้องปฏิบัติการ</p>
-<table class="data">
-<caption>ตารางที่ 7 ตัวชี้วัดที่ <code>scripts/pad_eval.py</code> รายงาน</caption>
-<tr><th style="width:22%">ตัวชี้วัด</th><th>ความหมาย</th></tr>
-<tr><td>APCER (ต่อชนิด PAI)</td><td>สัดส่วนการโจมตีที่ถูกรับเป็นของจริง; เมื่อรายงานเป็นค่าเดียวใช้ชนิดที่แย่ที่สุด</td></tr>
-<tr><td>BPCER</td><td>สัดส่วนการนำเสนอของจริงที่ถูกปฏิเสธ</td></tr>
-<tr><td>ACER</td><td>(APCER<sub>max</sub> + BPCER) / 2</td></tr>
-<tr><td>APNRR / BPNRR</td><td>อัตราไม่ตอบสนอง (ระบบจับภาพไม่ได้/ผิดโปรโตคอล) รายงานแยก ไม่นับรวมใน APCER/BPCER</td></tr>
-<tr><td>ช่วงความเชื่อมั่น 95 %</td><td>Wilson interval ทุกอัตรา — 0/30 ไม่ใช่ “0 %” แต่คือ “≤ ประมาณ 11 %”</td></tr>
-<tr><td>Gate attribution</td><td>ฮิสโทแกรมรหัสเหตุผลของการปฏิเสธต่อชนิด PAI และคะแนนของการโจมตีที่ผ่าน</td></tr>
-</table>
-<h2>ขั้นตอนการประเมินภายใน</h2>
+<h1 class="sec">5. การใช้งาน ทดสอบ และตรวจหลักฐาน</h1>
 <ol>
-  <li>ติดตั้งเซิร์ฟเวอร์ประเมินแยกจาก production เปิด <code>EKYC_RETAIN_FRAMES=all</code>, <code>EKYC_FLASH_FRAMES=4</code>, <code>EKYC_PULSE_FRAMES=90</code>, ใช้ backend deepface</li>
-  <li>ทุกเซสชันติดป้าย <code>label</code> ตามชนิด: <code>bona_fide</code>, <code>print_a4_matte</code>, <code>print_cutout</code>, <code>replay_phone</code>, <code>replay_challenge</code>, <code>mask_paper</code>, <code>mask_3dprint</code>, <code>mask_latex</code>, <code>mask_silicone</code>, <code>inject_virtual_cam</code> ฯลฯ โดยผู้โจมตีต้องพยายามผ่านจริง</li>
-  <li>อย่างน้อย 30 การนำเสนอต่อชนิดสำหรับการดูครั้งแรก และ 100+ ก่อนอ้างอิงตัวเลข</li>
-  <li>รัน <code>py -3.12 scripts/pad_eval.py &lt;dir&gt; --json eval.json --markdown eval.md</code>; ใช้ <code>--rescore</code> เพื่อลองเกณฑ์ใหม่บนหลักฐานเดิม</li>
-  <li>ลบข้อมูลที่เก็บไว้เมื่อจบรอบ (ต้องได้รับความยินยอมจากผู้ทดสอบทุกคน)</li>
-</ol>
-<div class="note"><b>ถ้อยคำที่ใช้ได้:</b> “ประเมินภายในด้วยตัวชี้วัด ISO/IEC 30107-3” พร้อมแนบตาราง · <b>ถ้อยคำที่ห้ามใช้:</b> “เป็นไปตาม/ผ่านการรับรอง ISO/IEC 30107-3” จนกว่าห้องปฏิบัติการภายนอกจะประเมิน</div>
-<p class="small">รายละเอียดฉบับเต็ม: <code>docs/pad-evaluation.md</code> ในซอร์สโค้ด</p>
-</section>
-
-<section class="chapter">
-<h1 class="sec">8. การใช้งานแอปตัวอย่างกับเซิร์ฟเวอร์ทดสอบ</h1>
-<ol>
-  <li>ติดตั้ง <code>ekyc-example-*.apk</code> จาก GitHub Releases (Android arm64, เซ็นด้วย debug keystore เพื่อทดสอบ)</li>
-  <li>หน้าแรก: ช่อง “Server” มีค่า URL ของเซิร์ฟเวอร์ Railway อยู่แล้ว; วางกุญแจ API ในช่อง “API key” ครั้งเดียว (เก็บใน SecureStore ของเครื่อง)</li>
-  <li>สถานะบรรทัดล่างช่องกรอกต้องแสดง <code>ok · 0.1.0</code></li>
-  <li>“สแกนใบหน้าเพื่อลงทะเบียน” → ทำตามคำสั่ง (มองตรง → 3 คำสั่งสุ่ม → flash สี 4 เฟรม) → ผลลัพธ์และรายชื่อในตาราง “ผู้ที่ลงทะเบียนแล้ว”</li>
-  <li>“ค้นหาว่าเป็นใคร (identify 1:N)” เพื่อทดสอบการจดจำใบหน้าที่ลงทะเบียนไว้ ข้อมูลอยู่ใน Postgres ของ Railway และคงอยู่ข้ามการ deploy</li>
+  <li>ติดตั้ง <code>ekyc-example-v1.0.0-b21-arm64.apk</code> — เซิร์ฟเวอร์และ API key ทดสอบถูกตั้งไว้แล้ว</li>
+  <li><b>Enroll</b> ใส่ชื่อ → ทำท่า → ผ่าน = บันทึก template ของชื่อนั้น</li>
+  <li><b>Identify</b> (ไม่ใส่ชื่อ) → ผลบอก "ยืนยันแล้วว่าเป็น: ชื่อ (xx%)" หรือ <code>NO_MATCH</code> · <b>Verify</b> เลือกบุคคลแล้วยืนยัน</li>
+  <li>ดูหลักฐานทุก shot: เปิดเบราว์เซอร์ <code>https://ekyc-api-production-1c11.up.railway.app/v1/audit/gallery?key=&lt;API key&gt;</code> — thumbnail ทุกภาพ (neutral / ท่า / flash) ต่อรอบพร้อมผล เหตุผล และคะแนน; สรุปอัตราผ่านที่ <code>/v1/audit</code> (header <code>X-API-Key</code>)</li>
+  <li>ปรับเกณฑ์จากตัวเลข: <code>scripts/audit_report.py</code> รวมการกระจายคะแนนต่อ gate; gate advisory (flash, pulse, eye บน onnx) เปลี่ยนเป็นบังคับเมื่อ p10 ของคนจริงผ่านสบายและมีรอบโจมตีไว้ประเมิน APCER</li>
 </ol>
 <table class="data">
-<caption>ตารางที่ 8 กรณีทดสอบแนะนำ</caption>
-<tr><th style="width:6%">ลำดับ</th><th style="width:36%">กรณี</th><th>ผลที่คาดหวัง</th></tr>
-<tr><td>1</td><td>ลงทะเบียนบุคคลจริง</td><td>pass; personId ใหม่ในรายชื่อ</td></tr>
-<tr><td>2</td><td>identify ด้วยบุคคลเดิม</td><td>pass; ชื่อที่ลงทะเบียน; คะแนน match ≥ 0.42</td></tr>
-<tr><td>3</td><td>identify ด้วยบุคคลอื่น</td><td>fail; <code>NO_MATCH</code></td></tr>
-<tr><td>4</td><td>ถือภาพถ่าย/โทรศัพท์อีกเครื่องที่มีวิดีโอผู้ใช้</td><td>fail; <code>PAD_LOW</code> และ/หรือ <code>FLASH_SPOOF</code></td></tr>
-<tr><td>5</td><td>เปลี่ยนบุคคลกลางคัน</td><td>fail; <code>IDENTITY_INCONSISTENT</code></td></tr>
-<tr><td>6</td><td>ไม่ใส่กุญแจ API</td><td>สถานะ “unreachable — Server returned 401”</td></tr>
+<caption>ตารางที่ 6 กรณีทดสอบแนะนำ</caption>
+<tr><th style="width:6%">#</th><th style="width:40%">กรณี</th><th>ผลที่คาดหวัง</th></tr>
+<tr><td>1</td><td>ทำท่าจริง ถือเครื่องนิ่งตอนมองตรง</td><td>ผ่าน; PAD ≥ 0.99, flash ≥ 0.8; enroll/identify แสดงชื่อ</td></tr>
+<tr><td>2</td><td>รูปถ่ายหรือจอมือถืออีกเครื่อง</td><td>ท่าเคลื่อนไหวไม่ผ่านฝั่งแอป; ถ้าหลุดไปถึงเซิร์ฟเวอร์ PAD ต่ำ → <code>PAD_SPOOF</code>; flash score ต่ำ (บันทึก)</td></tr>
+<tr><td>3</td><td>คนละคนกลางรอบ (สลับคน)</td><td><code>IDENTITY_INCONSISTENT</code></td></tr>
+<tr><td>4</td><td>Identify คนที่ไม่เคย enroll</td><td><code>NO_MATCH</code> (ไม่มีชื่อ)</td></tr>
+<tr><td>5</td><td>เรียก API โดยไม่มี key</td><td>401</td></tr>
+<tr><td>6</td><td>หน้ากากกระดาษ/แข็ง</td><td>อ้าปากไม่ผ่านฝั่งแอป (หมดเวลา) — บันทึกเป็นรอบโจมตีสำหรับ <code>pad_eval.py</code></td></tr>
 </table>
-</section>
-
-<section class="chapter">
-<h1 class="sec">9. ข้อจำกัดและแผนงานถัดไป</h1>
+<h2>ข้อจำกัดและแผนถัดไป</h2>
+<ul>
+  <li>ยังไม่มีชุดการโจมตีจริงมากพอสำหรับ APCER/BPCER ที่มีนัยสำคัญ; ไม่มีการรับรอง ISO/IEC 30107-3</li>
+  <li>onnx backend วัดตาเป็นค่าประมาณ (advisory) และไม่วัดอ้าปาก/ยิ้ม — ต้องการความเข้มสูงสุดให้ใช้ backend deepface (MediaPipe) ซึ่งหนักกว่า</li>
+  <li>ความเร็วหลังแก้ต้องยืนยันด้วย <code>serverMs</code> จากรอบจริง; โมเดลยังเป็น CPU</li>
+  <li>API key ทดสอบฝังในแอป — ใช้เฉพาะทดสอบ; ของจริงต้องออก key ต่อผู้ใช้/แอปและหมุนเวียนได้</li>
+</ul>
+<h2>ภาคผนวก: รหัสเหตุผลและไฟล์สำคัญ</h2>
 <table class="data">
-<caption>ตารางที่ 9 ข้อจำกัดที่ทราบและแผนงาน (เรียงตามความสำคัญ)</caption>
-<tr><th style="width:44%">ข้อจำกัด</th><th>แผนงาน</th></tr>
-<tr><td>rPPG ปรับเทียบบนสัญญาณสังเคราะห์เท่านั้น จึงเป็น advisory</td><td>เก็บ <code>bona_fide</code> ≥ 30 คน + <code>mask_*</code> ผ่าน retention แล้วดูการกระจายของ <code>pulse.score</code> → ตั้ง <code>pulse_min</code> และเปลี่ยนเป็น enforce</td></tr>
-<tr><td>เซิร์ฟเวอร์ทดสอบใช้ backend onnx จึงไม่มีคำสั่งอ้าปาก/ยิ้ม และ eye rule เป็น advisory</td><td>ติดตั้ง backend deepface (image ขนาดใหญ่กว่า) สำหรับการทดสอบหน้ากาก</td></tr>
-<tr><td>Attestation ตรวจการมีอยู่ของ token เท่านั้น</td><td>verify กับ Google Play Integrity / Apple App Attest แล้วเปิด <code>EKYC_REQUIRE_ATTESTATION=true</code></td></tr>
-<tr><td>เกณฑ์การจับคู่ใบหน้าปรับเทียบบน LFW ไม่ใช่กลุ่มผู้ใช้เป้าหมาย</td><td>วัดกับผู้ใช้จริง ≥ 20 คน × 3 ครั้ง</td></tr>
-<tr><td>ยังไม่ได้ทดสอบภาพพิมพ์ ตัดเจาะ และหน้ากากจริง</td><td>ตามโปรโตคอลหัวข้อ 7 แล้วจึงติดต่อห้องปฏิบัติการ</td></tr>
-<tr><td>น้ำหนัก InsightFace buffalo_l (backend onnx) เป็นสัญญาอนุญาตเพื่อการวิจัย</td><td>ใช้ backend deepface ใน production หรือแก้ไขสัญญาอนุญาต</td></tr>
-<tr><td>ไม่มีการจำกัดอัตราการเรียก (rate limit) และ certificate pinning</td><td>ก่อน production</td></tr>
-</table>
-</section>
-
-<section class="chapter">
-<h1 class="sec">ภาคผนวก ก. รหัสเหตุผลจากเซิร์ฟเวอร์</h1>
-<table class="data">
-<tr><th style="width:36%">รหัส</th><th>ความหมาย</th></tr>
-<tr><td><code>CHALLENGE_MISMATCH / TIMING_IMPLAUSIBLE / FRAME_MISSING / FRAME_UNREADABLE</code></td><td>โครงสร้างหลักฐานไม่ตรงที่ออกให้ / เวลาไม่สมเหตุสมผล / ภาพไม่ครบ / ถอดรหัสไม่ได้</td></tr>
-<tr><td><code>NO_FACE / MULTIPLE_FACES</code></td><td>ไม่พบใบหน้า / มีบุคคลอื่นขนาดใกล้เคียงในภาพ</td></tr>
-<tr><td><code>QUALITY_SHARPNESS / QUALITY_BRIGHTNESS / QUALITY_FACE_TOO_SMALL</code></td><td>คุณภาพภาพ neutral</td></tr>
-<tr><td><code>PAD_LOW</code></td><td>MiniFASNet ต่ำกว่า 0.45 บนเฟรมคำสั่ง</td></tr>
-<tr><td><code>POSE_NOT_FRONTAL / POSE_INSUFFICIENT_TURN / POSE_SAME_DIRECTION</code></td><td>ท่ามองตรง / หันไม่พอ (≥ 22° จาก neutral) / หันทางเดียวกันทั้งสองครั้ง</td></tr>
-<tr><td><code>EYES_NOT_CLOSED</code></td><td>EAR ไม่ลดลงพอ (ratio ≤ 0.65 และ EAR ≤ 0.12)</td></tr>
-<tr><td><code>MOUTH_NOT_OPEN / SMILE_ABSENT / EXPRESSION_UNVERIFIABLE</code></td><td>คำสั่งอ้าปาก/ยิ้มไม่ผ่าน / วัดไม่ได้ (fail closed)</td></tr>
-<tr><td><code>IDENTITY_INCONSISTENT</code></td><td>คู่ภาพต่ำกว่า 0.25 (รวม anchor ของ pulse)</td></tr>
-<tr><td><code>FLASH_SPOOF / FLASH_FRAME_MISSING</code></td><td>สีใบหน้าไม่ตามลำดับ flash / เฟรม flash ไม่ครบ</td></tr>
-<tr><td><code>PULSE_ABSENT / PULSE_FRAME_MISSING</code></td><td>ไม่พบชีพจร (เมื่อ enforce) / ภาพช่วง pulse ไม่ครบหรือสั้นเกินไป</td></tr>
-<tr><td><code>FLAT_FACE / FRAMES_DUPLICATE / ATTESTATION_MISSING</code></td><td>planarity (เมื่อ enforce) / เฟรมซ้ำไบต์เดียวกัน / ไม่มี token (เมื่อบังคับ)</td></tr>
-<tr><td><code>NO_MATCH / PERSON_NOT_FOUND</code></td><td>ไม่ตรงกับแม่แบบ (≥ 0.42) / ไม่พบบุคคล</td></tr>
-</table>
-<h1 class="sec" style="margin-top:18pt">ภาคผนวก ข. ตัวแปรสภาพแวดล้อมที่สำคัญ</h1>
-<table class="data">
-<tr><th style="width:40%">ตัวแปร</th><th>ค่าเริ่มต้น / ความหมาย</th></tr>
-<tr><td><code>EKYC_BACKEND</code></td><td><code>deepface</code> (ค่าเริ่มต้น) / <code>onnx</code> (Railway) / <code>fake</code></td></tr>
-<tr><td><code>EKYC_API_KEYS</code></td><td>ว่าง = เปิด (dev เท่านั้น); ค่าคั่นด้วยจุลภาค</td></tr>
-<tr><td><code>EKYC_FLASH_FRAMES</code></td><td>0 = ปิด; Railway ตั้ง 4</td></tr>
-<tr><td><code>EKYC_PULSE_FRAMES</code>, <code>EKYC_PULSE_DURATION_MS</code>, <code>EKYC_PULSE_RULE</code>, <code>EKYC_PULSE_MIN</code></td><td>0 / 7000 / advisory / 0.5</td></tr>
-<tr><td><code>EKYC_EXPRESSION_CHALLENGES</code>, <code>EKYC_ALWAYS_OPEN_MOUTH</code>, <code>EKYC_EXPRESSION_RULE</code></td><td>true / true / enforce (ใช้ผลเมื่อ backend วัด blendshapes ได้)</td></tr>
-<tr><td><code>EKYC_MOUTH_OPEN_MIN</code>, <code>EKYC_MOUTH_OPEN_DELTA_MIN</code>, <code>EKYC_SMILE_MIN</code>, <code>EKYC_SMILE_DELTA_MIN</code></td><td>0.35 / 0.20 / 0.45 / 0.25</td></tr>
-<tr><td><code>EKYC_PAD_MIN</code>, <code>EKYC_MATCH_MIN</code>, <code>EKYC_CONSISTENCY_MIN</code></td><td>0.45 / 0.42 / 0.25</td></tr>
-<tr><td><code>EKYC_REQUIRE_ATTESTATION</code></td><td>false</td></tr>
-<tr><td><code>EKYC_RETAIN_FRAMES</code>, <code>EKYC_FRAMES_DIR</code></td><td>none (production) / all หรือ on_fail สำหรับ evaluation</td></tr>
-<tr><td><code>EKYC_NEUTRAL_YAW_MAX_DEG</code></td><td>25 (deepface) / 45 (onnx)</td></tr>
+<tr><th style="width:40%">รหัส / ไฟล์</th><th>ความหมาย</th></tr>
+<tr><td><code>MISSING_FRAME · NO_FACE · MULTIPLE_FACES · FRAME_UNREADABLE</code></td><td>โครงสร้างหลักฐาน</td></tr>
+<tr><td><code>QUALITY_SHARPNESS/BRIGHTNESS/FACE_SIZE/ROLL</code></td><td>คุณภาพภาพ</td></tr>
+<tr><td><code>PAD_SPOOF · POSE_NOT_MET · EYES_NOT_CLOSED · MOUTH_NOT_OPEN · IDENTITY_INCONSISTENT · FLASH_SPOOF · PULSE_ABSENT · NO_MATCH</code></td><td>gates (บางตัว advisory ตามตารางที่ 1)</td></tr>
+<tr><td><code>server/app/decision.py · config.py · services/verification.py · main.py</code></td><td>engine ตัดสิน · เกณฑ์ · วัดเฟรม (flash เบา, ขนาน) · API + displayName + serverMs</td></tr>
+<tr><td><code>server/app/services/{retention,audit,evidence}.py</code></td><td>เก็บหลักฐาน · สรุป · gallery</td></tr>
+<tr><td><code>server/scripts/pad_eval.py · audit_report.py</code></td><td>ประเมิน PAD แบบ ISO · รายงานจาก audit</td></tr>
+<tr><td><code>packages/react-native-ekyc/src/liveness/* · ui/EKYCCamera.tsx · client/EKYCClient.ts</code></td><td>ท่าทาง · หน้าจอ · เรียก API</td></tr>
 </table>
 <div class="sig"><div>ผู้จัดทำ</div><div>ผู้ตรวจสอบ</div><div>ผู้อนุมัติ</div></div>
 </section>

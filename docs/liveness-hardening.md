@@ -129,3 +129,11 @@ hardening remains.
   motion between frames); tune FLASH_MIN; add edge-case tests.
 - 9: update spec + architecture artifact with the new layers (team handoff).
 - 10: build APK with EKYC_FLASH_FRAMES on, emulator/device smoke.
+
+## Iteration 12 — 2026-08-19: who it is, and why it was slow
+
+- Railway sessions (b20) all failed `EYES_NOT_CLOSED` while every other gate passed: the onnx 5-point eye proxy is not EAR. Eye rule is now advisory on onnx (env `EKYC_EYE_RULE` wins); next sessions: enroll pass, identify match 0.84, 2× `QUALITY_SHARPNESS`.
+- Submit took ~10 s: four flash frames were measured in full (PAD + ArcFace) and all frames sequentially. Now: flash frames → `measure_flash` (detect + mean face colour only), frames measured on a 4-thread pool for onnx (`parallel_workers`), flash JPEG q60 on the client. `serverMs` in every decision + `submit.decided` log — read that before touching anything else.
+- `displayName` in `DecisionResponse` (enroll/verify/identify) → result screen "ยืนยันแล้วว่าเป็น: <name> (xx%)".
+- Evidence retention on the Railway volume; `/v1/audit/gallery?key=` is the review page.
+- Docs rewritten to ≤10 pages each (`docs/pdf/ekyc-local.pdf` 10 p, `ekyc-server.pdf` 9 p).

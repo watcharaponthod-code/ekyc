@@ -2,301 +2,163 @@
 <html lang="th">
 <head>
 <meta charset="utf-8">
-<title>เอกสารระบบตรวจสอบความมีชีวิตและยืนยันใบหน้าแบบทำงานบนอุปกรณ์ทั้งหมด (eKYC Local)</title>
+<title>ระบบตรวจสอบความมีชีวิตแบบทำงานบนอุปกรณ์ทั้งหมด (eKYC Local)</title>
 <link rel="stylesheet" href="style.css">
+<style>.toc{page-break-after:auto;margin-bottom:10mm}.cover{height:auto;page-break-after:always;min-height:230mm}</style>
 </head>
 <body>
 
-<!-- ปก -->
 <div class="cover">
   <div>
     <div class="org">โครงการ eKYC · เอกสารทางเทคนิค</div>
     <div class="rule"></div>
-    <h1>ระบบตรวจสอบความมีชีวิต (Liveness) และยืนยันใบหน้า<br>แบบทำงานบนอุปกรณ์ทั้งหมด</h1>
-    <div class="subtitle">eKYC Local — ไม่เชื่อมต่อเซิร์ฟเวอร์ ไม่ส่งข้อมูลชีวมิติออกจากเครื่อง</div>
+    <h1>ระบบตรวจสอบความมีชีวิต (Liveness)<br>แบบทำงานบนอุปกรณ์ทั้งหมด</h1>
+    <div class="subtitle">eKYC Local — ไม่มีเซิร์ฟเวอร์ ไม่มีโมเดลจดจำใบหน้า ผลออกทันทีบนเครื่อง</div>
     <table class="meta">
       <tr><td>ชื่อระบบ</td><td>eKYC Local (แพ็กเกจ <code>@ekyc/react-native-ekyc-local</code> และแอป <code>apps/local</code>)</td></tr>
-      <tr><td>เวอร์ชันเอกสาร</td><td>1.0</td></tr>
+      <tr><td>เวอร์ชันเอกสาร</td><td>2.0 (build 11)</td></tr>
       <tr><td>วันที่จัดทำ</td><td>19 สิงหาคม 2569</td></tr>
-      <tr><td>สถานะ</td><td>ฉบับส่งมอบเพื่อทดสอบภายใน (ไม่ใช่เอกสารรับรองมาตรฐาน)</td></tr>
-      <tr><td>แหล่งโค้ด</td><td>https://github.com/watcharaponthod-code/ekyc</td></tr>
-      <tr><td>ไฟล์ติดตั้ง</td><td>GitHub Releases ของโครงการ (ไฟล์ <code>ekyc-local-*.apk</code>)</td></tr>
+      <tr><td>สถานะ</td><td>ฉบับส่งมอบเพื่อทดสอบภายใน</td></tr>
+      <tr><td>แหล่งโค้ด / ไฟล์ติดตั้ง</td><td>https://github.com/watcharaponthod-code/ekyc (branch <code>local-only</code>, Releases <code>local-v1.0.0-b11</code>)</td></tr>
     </table>
   </div>
-  <div class="foot">เอกสารฉบับนี้อธิบายการออกแบบ ขอบเขต ผลการทดสอบอ้างอิง และข้อจำกัดของระบบตามสภาพจริง ณ วันที่จัดทำ ตัวเลขทุกค่าที่ปรากฏเป็นค่าที่วัดได้ในเงื่อนไขที่ระบุไว้ ไม่ใช่การรับรองสมรรถนะโดยหน่วยงานภายนอก</div>
+  <div class="foot" style="margin-top:12mm">ตัวเลขทุกค่าในเอกสารเป็นค่าที่วัดได้จริงในเงื่อนไขที่ระบุ ไม่ใช่การรับรองสมรรถนะโดยหน่วยงานภายนอก</div>
 </div>
 
-<!-- สารบัญ -->
-<div class="toc">
-  <h1 class="sec">สารบัญ</h1>
-  <ol>
-    <li><span>1. บทนำและวัตถุประสงค์</span></li>
-    <li><span>2. ขอบเขตของระบบและสิ่งที่ระบบไม่ครอบคลุม</span></li>
-    <li><span>3. สถาปัตยกรรมและองค์ประกอบ</span></li>
-    <li><span>4. ขั้นตอนการทำงาน</span></li>
-    <li><span>5. รายละเอียดทางเทคนิค</span></li>
-    <li class="l2"><span>5.1 การตรวจจับใบหน้าและการโค้ช (ML Kit)</span></li>
-    <li class="l2"><span>5.2 การฝังใบหน้า (MobileFaceNet TFLite)</span></li>
-    <li class="l2"><span>5.3 เกณฑ์การตัดสินและการปรับเทียบ</span></li>
-    <li><span>6. การทดสอบและรูปอ้างอิง</span></li>
-    <li class="l2"><span>6.1 การทดสอบอัตโนมัติ</span></li>
-    <li class="l2"><span>6.2 การปรับเทียบโมเดลบนชุดข้อมูลสาธารณะ</span></li>
-    <li class="l2"><span>6.3 หน้าจอของแอปพลิเคชัน</span></li>
-    <li><span>7. การติดตั้งและการทดสอบด้วยตนเอง</span></li>
-    <li><span>8. ความปลอดภัยและข้อมูลส่วนบุคคล</span></li>
-    <li><span>9. ข้อจำกัดและแผนงานถัดไป</span></li>
-    <li><span>ภาคผนวก ก. รหัสเหตุผล (reason codes)</span></li>
-    <li><span>ภาคผนวก ข. โครงสร้างไฟล์ที่เกี่ยวข้อง</span></li>
-  </ol>
-</div>
-
-<!-- 1 -->
-<section class="chapter">
-<h1 class="sec">1. บทนำและวัตถุประสงค์</h1>
-<p>ระบบ eKYC Local เป็นส่วนประกอบ (module) สำหรับแอปพลิเคชัน React Native ที่ทำหน้าที่ตรวจสอบว่า <b>บุคคลที่อยู่หน้ากล้องกำลังปฏิบัติตามคำสั่งจริงในขณะนั้น</b> (หันซ้าย หันขวา อ้าปาก พยักหน้า) และ <b>ใบหน้าที่ปรากฏในทุกท่าเป็นบุคคลเดียวกัน</b> โดยการประมวลผลทั้งหมดเกิดขึ้นบนอุปกรณ์ ไม่มีการเชื่อมต่อเครือข่าย ไม่มีเซิร์ฟเวอร์ และไม่มีข้อมูลชีวมิติ (ภาพหรือแม่แบบใบหน้า) ออกจากเครื่อง</p>
-<p>ระบบนี้จัดทำแยกจากระบบ eKYC แบบ client–server ของโครงการ (ซึ่งมีเซิร์ฟเวอร์เป็นผู้ตัดสิน) ตามข้อกำหนดที่ต้องการทางเลือกที่ทำงานได้เองทั้งหมดบนโทรศัพท์ ด้วยเทคโนโลยีคอมพิวเตอร์วิทัศน์ของ Google (ML Kit) และโมเดลจดจำใบหน้าขนาดเล็กที่ทำงานบนอุปกรณ์ได้ (MobileFaceNet)</p>
-<h2>วัตถุประสงค์</h2>
-<ol>
-  <li>ยืนยันการมีชีวิตแบบตอบสนองต่อคำสั่ง (active liveness) โดยไม่พึ่งพาเซิร์ฟเวอร์</li>
-  <li>ยืนยันความสอดคล้องของอัตลักษณ์ตลอดการทำท่า (identity consistency) เพื่อป้องกันการสลับบุคคลหรือสลับภาพระหว่างขั้นตอน</li>
-  <li>รองรับการบันทึกแม่แบบใบหน้าไว้ในเครื่องเพื่อยืนยันตัวบุคคลเดิมในครั้งถัดไป (local enrol / verify) โดยเป็นทางเลือก</li>
-  <li>ให้ตัวเลขผลการทดสอบทุกครั้งแสดงบนหน้าจอ เพื่อให้ผู้ทดสอบปรับเกณฑ์กับผู้ใช้จริงได้</li>
-</ol>
-</section>
-
-<!-- 2 -->
-<section class="chapter">
-<h1 class="sec">2. ขอบเขตของระบบและสิ่งที่ระบบไม่ครอบคลุม</h1>
+<section>
+<h1 class="sec">1. ระบบทำอะไร</h1>
+<p>eKYC Local ตรวจว่า <b>มีบุคคลจริงอยู่หน้ากล้องและทำท่าตามคำสั่งในขณะนั้น</b> โดยประมวลผลทั้งหมดบนโทรศัพท์ ไม่มีการเชื่อมต่อเซิร์ฟเวอร์ ไม่มีโมเดลจดจำใบหน้า และไม่มีข้อมูลชีวมิติออกจากเครื่อง ผลลัพธ์ (ผ่าน/ไม่ผ่าน พร้อมเหตุผล) พร้อมทันทีที่ทำท่าครบ</p>
 <table class="data">
-<caption>ตารางที่ 1 ขอบเขตของระบบ</caption>
-<tr><th style="width:38%">รายการ</th><th>สถานะ</th></tr>
-<tr><td>การโค้ชผู้ใช้ให้อยู่ในกรอบ (ไกล/ใกล้/เยื้อง/หลายใบหน้า)</td><td>ครอบคลุม — ใช้กลไกเดียวกับระบบ client–server</td></tr>
-<tr><td>คำสั่งท่าทาง: หันซ้าย หันขวา อ้าปาก พยักหน้า (สุ่มลำดับทุกครั้ง)</td><td>ครอบคลุม</td></tr>
-<tr><td>การตรวจว่าทุกภาพเป็นบุคคลเดียวกัน</td><td>ครอบคลุม — MobileFaceNet เทียบทุกคู่ภาพ</td></tr>
-<tr><td>การบันทึก/ยืนยันกับแม่แบบใบหน้าในเครื่อง</td><td>ครอบคลุม (ทางเลือก)</td></tr>
-<tr><td>หน้ากากแข็ง (3D-print, resin, กระดาษ)</td><td>ครอบคลุมโดยอ้อม — คำสั่ง “อ้าปาก” ต้องผ่านภายในเวลาที่กำหนด หน้ากากแข็งอ้าขากรรไกรไม่ได้</td></tr>
-<tr><td>หน้ากากซิลิโคน / latex</td><td>มีการวัดชีพจรจากสีผิว (rPPG) หลังจบคำสั่ง — <b>รายงานคะแนน แต่ยังไม่ตัดสิน (advisory)</b> จนกว่าจะปรับเทียบบนโทรศัพท์จริง</td></tr>
-<tr><td>การตรวจจับภาพถ่าย จอภาพ วิดีโอย้อนหลัง (2D PAD)</td><td><b>ไม่ครอบคลุม</b> — ไม่มีโมเดล PAD 2 มิติบนอุปกรณ์ในรุ่นนี้</td></tr>
-<tr><td>การเชื่อมต่อเซิร์ฟเวอร์ การส่งข้อมูล การเก็บบันทึกกลาง</td><td>ไม่มีโดยเจตนา</td></tr>
+<caption>ตารางที่ 1 ขอบเขต</caption>
+<tr><th style="width:44%">รายการ</th><th>สถานะ</th></tr>
+<tr><td>โค้ชให้อยู่ในกรอบ (ไกล/ใกล้/เยื้อง/หลายใบหน้า)</td><td>ครอบคลุม (กลไกเดียวกับระบบ client–server)</td></tr>
+<tr><td>คำสั่งท่าทางแบบเดียวกับเซิร์ฟเวอร์: อ้าปาก (ทุกครั้ง) + สุ่ม 3 จาก กระพริบตา · หันซ้าย · หันขวา · ขยับเข้า · ขยับออก</td><td>ครอบคลุม — ทุกท่าเป็น<b>การเคลื่อนไหว</b> เทียบกับท่ามองตรงของคนคนนั้น</td></tr>
+<tr><td>ใบหน้าอยู่ต่อเนื่องตลอดรอบ (ไม่หลุด/ไม่กระโดด)</td><td>วัดและรายงาน (advisory)</td></tr>
+<tr><td>แสงสีจากหน้าจอ 4 สีตอนท้าย (สะท้อนบนใบหน้า)</td><td>วัดและรายงาน (advisory) — กันภาพถ่าย/จอ</td></tr>
+<tr><td>จดจำว่าเป็นใคร (face recognition)</td><td><b>ไม่มีในรุ่นเบา</b> (โค้ด MobileFaceNet/rPPG อยู่ที่ <code>./heavy</code> ยังไม่ผ่านการใช้งานจริงบนอุปกรณ์)</td></tr>
+<tr><td>ตรวจหน้ากาก 3 มิติ</td><td>ทางอ้อม — หน้ากากแข็งอ้าปากไม่ได้ (คำสั่งอ้าปากบังคับทุกรอบ); ซิลิโคนไม่ครอบคลุม</td></tr>
+<tr><td>การเชื่อมต่อเครือข่าย</td><td>ไม่มี ยกเว้นตัวส่ง log ทดสอบไปคอมที่ผู้ทดสอบเปิดเอง (ตัวเลขล้วน)</td></tr>
 </table>
-<div class="note warn"><b>ข้อควรระวังในการนำไปใช้:</b> เนื่องจากไม่มีการตรวจสื่อปลอม 2 มิติ วิดีโอของบุคคลจริงที่เล่นบนจอและทำท่าตามคำสั่งอาจผ่านการตรวจได้ (rPPG อ่านชีพจรจากวิดีโอของคนจริงบนจอได้เช่นกัน) ระบบนี้จึงเหมาะสำหรับงานยืนยันซ้ำที่มีความเสี่ยงต่ำ (เช่น ยืนยันว่ายังเป็นผู้ใช้คนเดิมก่อนทำรายการภายในแอป) ไม่เหมาะเป็นหลักฐานเดียวสำหรับการเปิดบัญชีหรือการพิสูจน์ตัวตนระดับสูง ซึ่งควรใช้ระบบ client–server ที่มีชั้นป้องกันบนเซิร์ฟเวอร์</div>
+<div class="note warn"><b>ข้อจำกัดที่ต้องบอกผู้ใช้งาน:</b> ระบบพิสูจน์ "คนจริงกำลังทำท่าตามคำสั่ง" แต่ไม่พิสูจน์ว่าเป็นใคร และไม่ตรวจสื่อปลอมอย่างเข้มงวด (แสงสะท้อนกันรูป/จอได้ระดับหนึ่ง แต่ไม่กันหน้ากาก) เหมาะกับงานยืนยันซ้ำความเสี่ยงต่ำ งานพิสูจน์ตัวตนจริงให้ใช้ระบบ client–server</div>
 </section>
 
-<!-- 3 -->
 <section class="chapter">
-<h1 class="sec">3. สถาปัตยกรรมและองค์ประกอบ</h1>
-<p>ระบบประกอบด้วยสามส่วนบนอุปกรณ์เดียว ดังรูปที่ 1</p>
+<h1 class="sec">2. ขั้นตอนการทำงาน</h1>
 <figure class="diagram">
-<svg viewBox="0 0 760 300" width="760" height="300" xmlns="http://www.w3.org/2000/svg" font-family="TH Sarabun New" font-size="17">
+<svg viewBox="0 0 760 210" width="760" height="210" xmlns="http://www.w3.org/2000/svg" font-family="TH Sarabun New" font-size="16">
   <defs><marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#1f3a5f"/></marker></defs>
-  <rect x="10" y="10" width="740" height="280" rx="10" fill="none" stroke="#9a9a9a" stroke-dasharray="6 4"/>
-  <text x="24" y="34" font-size="15" fill="#444">โทรศัพท์ (ไม่มีการเชื่อมต่อเครือข่าย)</text>
-  <rect x="30" y="60" width="200" height="90" rx="8" fill="#eef2f7" stroke="#1f3a5f"/>
-  <text x="130" y="88" text-anchor="middle" font-weight="700">กล้องหน้า + ML Kit</text>
-  <text x="130" y="112" text-anchor="middle" font-size="15">ตรวจจับใบหน้า มุมหัน/ก้ม</text>
-  <text x="130" y="132" text-anchor="middle" font-size="15">เส้นขอบปาก (contours)</text>
-  <rect x="280" y="60" width="200" height="90" rx="8" fill="#eef2f7" stroke="#1f3a5f"/>
-  <text x="380" y="88" text-anchor="middle" font-weight="700">กลไก Liveness</text>
-  <text x="380" y="112" text-anchor="middle" font-size="15">LivenessSession + Challenge</text>
-  <text x="380" y="132" text-anchor="middle" font-size="15">ถ่ายภาพนิ่ง 1 ภาพต่อท่า</text>
-  <rect x="530" y="60" width="200" height="90" rx="8" fill="#eef2f7" stroke="#1f3a5f"/>
-  <text x="630" y="88" text-anchor="middle" font-weight="700">MobileFaceNet (TFLite)</text>
-  <text x="630" y="112" text-anchor="middle" font-size="15">ฝังใบหน้า 192 มิติ</text>
-  <text x="630" y="132" text-anchor="middle" font-size="15">เทียบทุกคู่ภาพ (cosine)</text>
-  <line x1="230" y1="105" x2="278" y2="105" stroke="#1f3a5f" stroke-width="2" marker-end="url(#a)"/>
-  <line x1="480" y1="105" x2="528" y2="105" stroke="#1f3a5f" stroke-width="2" marker-end="url(#a)"/>
-  <rect x="280" y="190" width="200" height="70" rx="8" fill="#ffffff" stroke="#1f3a5f"/>
-  <text x="380" y="218" text-anchor="middle" font-weight="700">ผลลัพธ์</text>
-  <text x="380" y="242" text-anchor="middle" font-size="15">ผ่าน / ไม่ผ่าน + คะแนนทุกคู่ภาพ</text>
-  <line x1="630" y1="150" x2="630" y2="225" stroke="#1f3a5f" stroke-width="2"/>
-  <line x1="630" y1="225" x2="482" y2="225" stroke="#1f3a5f" stroke-width="2" marker-end="url(#a)"/>
-  <rect x="530" y="190" width="200" height="70" rx="8" fill="#ffffff" stroke="#9a9a9a" stroke-dasharray="4 3"/>
-  <text x="630" y="218" text-anchor="middle" font-size="15">แม่แบบใบหน้าในเครื่อง (ทางเลือก)</text>
-  <text x="630" y="242" text-anchor="middle" font-size="15">ตัวเลข 192 ค่า ไม่ใช่รูปภาพ</text>
+  <g>
+    <rect x="10" y="30" width="130" height="70" rx="8" fill="#eef2f7" stroke="#1f3a5f"/><text x="75" y="58" text-anchor="middle" font-weight="700">มองตรง</text><text x="75" y="80" text-anchor="middle" font-size="14">baseline ของคนคนนี้</text>
+    <line x1="140" y1="65" x2="168" y2="65" stroke="#1f3a5f" stroke-width="2" marker-end="url(#a)"/>
+    <rect x="170" y="30" width="200" height="70" rx="8" fill="#eef2f7" stroke="#1f3a5f"/><text x="270" y="58" text-anchor="middle" font-weight="700">4 คำสั่ง (สุ่ม)</text><text x="270" y="80" text-anchor="middle" font-size="14">แต่ละท่า = ทำ → กลับ, มองตรงคั่น</text>
+    <line x1="370" y1="65" x2="398" y2="65" stroke="#1f3a5f" stroke-width="2" marker-end="url(#a)"/>
+    <rect x="400" y="30" width="150" height="70" rx="8" fill="#eef2f7" stroke="#1f3a5f"/><text x="475" y="58" text-anchor="middle" font-weight="700">แสงจอ 4 สี</text><text x="475" y="80" text-anchor="middle" font-size="14">วัดสีสะท้อนบนหน้า</text>
+    <line x1="550" y1="65" x2="578" y2="65" stroke="#1f3a5f" stroke-width="2" marker-end="url(#a)"/>
+    <rect x="580" y="30" width="170" height="70" rx="8" fill="#ffffff" stroke="#1f3a5f"/><text x="665" y="58" text-anchor="middle" font-weight="700">ผลทันที</text><text x="665" y="80" text-anchor="middle" font-size="14">ผ่าน/ไม่ผ่าน + เหตุผล + ตัวเลข</text>
+  </g>
+  <rect x="10" y="130" width="740" height="60" rx="8" fill="none" stroke="#9a9a9a" stroke-dasharray="5 4"/>
+  <text x="380" y="155" text-anchor="middle" font-size="14">ตลอดรอบ: ML Kit ให้ค่าต่อเฟรม (yaw/pitch/ตา/ปาก/กรอบ) → ตัวติดตามความต่อเนื่องของใบหน้า (หลุดนานสุด, กระโดดมากสุด)</text>
+  <text x="380" y="177" text-anchor="middle" font-size="14">ทุกขั้นบันทึก "ทำได้เท่าไร / ต้องการเท่าไร" ลง log ของเครื่อง (ตัวเลขล้วน)</text>
 </svg>
-<figcaption>รูปที่ 1 องค์ประกอบของระบบ eKYC Local ทั้งหมดอยู่บนอุปกรณ์</figcaption>
+<figcaption>รูปที่ 1 ลำดับการทำงานหนึ่งรอบ (ประมาณ 15–25 วินาที)</figcaption>
 </figure>
 <table class="data">
-<caption>ตารางที่ 2 องค์ประกอบซอฟต์แวร์</caption>
-<tr><th style="width:32%">องค์ประกอบ</th><th>เทคโนโลยี</th><th style="width:30%">บทบาท</th></tr>
-<tr><td>กล้อง</td><td>react-native-vision-camera 5</td><td>ภาพตัวอย่างและการจับภาพนิ่งจากพื้นผิวแสดงผล (ไม่มีความหน่วงชัตเตอร์)</td></tr>
-<tr><td>ตรวจจับใบหน้า</td><td>Google ML Kit Face Detection ผ่าน react-native-vision-camera-face-detector 2</td><td>มุมหัน (yaw) มุมก้ม (pitch) มุมเอียง (roll) ความน่าจะเป็นตาเปิด และเส้นขอบริมฝีปาก</td></tr>
-<tr><td>กลไก liveness</td><td>@ekyc/react-native-ekyc (LivenessSession, Challenge, UI)</td><td>ลำดับคำสั่ง การถือท่า การเลือกจังหวะถ่ายภาพ ข้อความภาษาไทย/อังกฤษ</td></tr>
-<tr><td>ฝังใบหน้า</td><td>MobileFaceNet (TensorFlow Lite, 5.2 MB) ผ่าน react-native-fast-tflite</td><td>เวกเตอร์ 192 มิติต่อภาพ</td></tr>
-<tr><td>เตรียมภาพ</td><td>expo-image-manipulator + jpeg-js</td><td>ตัดกรอบ หมุนให้ตาอยู่ระดับ ย่อเป็น 112×112 พิกเซล ถอดรหัสเป็นพิกเซล</td></tr>
-<tr><td>ที่เก็บแม่แบบ</td><td>expo-file-system (พื้นที่ส่วนตัวของแอป)</td><td>ไฟล์ JSON ตัวเลข 192 ค่า</td></tr>
+<caption>ตารางที่ 2 คำสั่งและเกณฑ์ (ค่าเริ่มต้น — ทุกค่ามีที่มา, ปรับได้ผ่าน props)</caption>
+<tr><th style="width:18%">ท่า</th><th style="width:44%">เงื่อนไข (เทียบท่ามองตรงของตัวเอง)</th><th>ที่มา</th></tr>
+<tr><td>มองตรง</td><td>|yaw|, |pitch| ≤ 12° ค้าง 400 ms → เป็น baseline</td><td>เกณฑ์เดิมของระบบ server</td></tr>
+<tr><td>หันซ้าย/ขวา</td><td>Δyaw ≥ 25° ค้าง 400 ms</td><td>กฎ server 22° + margin 3° (log จริง: หันได้ 27–49°)</td></tr>
+<tr><td>กระพริบตา</td><td>ตาปิด (prob ≤ 0.5) → แล้ว<b>ลืม</b> (≥ 0.7)</td><td>2 ช่วง — หลับตาค้าง/รูปหลับตาไม่ผ่าน</td></tr>
+<tr><td>อ้าปาก</td><td>ช่องริมฝีปาก/ความกว้างปาก สูงขึ้น ≥ +0.18 ค้าง → แล้ว<b>หุบ</b></td><td>log จริง: อ้าได้ 0.28–0.39 vs ต้อง ~0.21</td></tr>
+<tr><td>ขยับเข้า / ออก</td><td>ความกว้างกรอบใบหน้า ≥ +25 % / ≤ −20 % → แล้วกลับภายใน ±10 %</td><td>อยู่ในช่วงกรอบที่อนุญาต 0.22–0.75 ของจอ</td></tr>
+<tr><td>ระหว่างท่า</td><td>ต้องกลับมามองตรง (±12°) ก่อนท่าถัดไปจะนับ</td><td>ทำให้ "ซ้าย→ขวา" เป็น 2 การเคลื่อนไหว ไม่ใช่เหวี่ยงค้าง</td></tr>
+<tr><td>แสงจอ</td><td>correlation ต่อ channel ระหว่างสีที่จอสั่งกับสีเฉลี่ยใบหน้า ≥ 0.5 (advisory)</td><td>สูตรเดียวกับ server; server วัดจริงได้ 0.82–0.92</td></tr>
+<tr><td>ต่อเนื่อง</td><td>ใบหน้าหลุดไม่เกิน 1.5 วินาที และไม่กระโดด > 35 % ของจอระหว่างเฟรมติดกัน (advisory)</td><td>ตั้งต้นหลวม รอตัวเลขจากเครื่องจริง</td></tr>
 </table>
+<p class="small">เวลาต่อขั้น ≤ 12 วินาที ทั้งรอบ ≤ 60 วินาที · ทุกท่าที่เป็น 2 ช่วง (กระพริบ อ้าปาก ขยับ) ถ่ายหลักฐานที่ช่วงแรกและต้องผ่านช่วงกลับ จึง<b>ไม่มีท่าใดผ่านได้ด้วยการค้างท่าเดียวหรือถือรูปนิ่ง</b> (พิสูจน์ด้วยชุดทดสอบ <code>motion.test.ts</code>)</p>
 </section>
 
-<!-- 4 -->
 <section class="chapter">
-<h1 class="sec">4. ขั้นตอนการทำงาน</h1>
-<ol>
-  <li><b>เริ่มต้น</b> — แอปโหลดโมเดล MobileFaceNet ล่วงหน้าตั้งแต่หน้าแรก (แสดงสถานะ “MobileFaceNet ready” พร้อมรูปร่างเทนเซอร์เข้า/ออก)</li>
-  <li><b>จัดกรอบ</b> — ระบบแนะนำให้ผู้ใช้อยู่ในกรอบวงรี (ขยับเข้า/ออก/กึ่งกลาง) และต้องมีใบหน้าเดียว</li>
-  <li><b>ท่ามองตรง (center)</b> — เมื่อ |yaw| และ |pitch| ≤ 12° ค้าง 400 ms ระบบถ่ายภาพ <code>neutral</code></li>
-  <li><b>คำสั่งสุ่มลำดับ 4 ท่า</b> — หันซ้าย/หันขวา (|yaw| ≥ 18°), อ้าปาก (อัตราส่วนช่องว่างริมฝีปากต่อความกว้างปาก ≥ 0.30), พยักหน้า (|pitch| ≥ 15°) แต่ละท่าถ่ายภาพเมื่อถือท่าได้ครึ่งหนึ่งของเวลาที่กำหนด แต่ละขั้นมีเวลาไม่เกิน 12 วินาที ทั้งหมดไม่เกิน 60 วินาที</li>
-  <li><b>อยู่นิ่งวัดชีพจร (rPPG)</b> — หลังคำสั่งครบ แอปแสดง “อยู่นิ่งๆ มองกล้อง สักครู่” และถ่ายภาพต่อเนื่องประมาณ 7 วินาที (เร็วเท่าที่อุปกรณ์ทำได้ ราว 8–15 ภาพ/วินาที) จากนั้นอ่านสีเฉลี่ยของหน้าผากและแก้มสองข้างจากภาพย่อ 32×32 ของกรอบใบหน้าในแต่ละภาพ และวิเคราะห์หาความถี่ชีพจร (0.7–3 Hz) ด้วยวิธี POS + สเปกตรัมเฉลี่ยข้าม 3 บริเวณ (โค้ดเดียวกับฝั่งเซิร์ฟเวอร์ แปลงเป็น TypeScript)</li>
-  <li><b>ตรวจซ้ำบนภาพนิ่ง</b> — ML Kit ตรวจจับใบหน้าบนไฟล์ภาพแต่ละภาพอีกครั้ง (โหมด accurate) เพื่อให้ได้กรอบและมุมเอียงที่ตรงกับภาพจริง</li>
-  <li><b>ฝังใบหน้า</b> — ตัดกรอบใบหน้าขยาย 15 % หมุนชดเชยมุมเอียง ตัดกลาง ย่อ 112×112 → MobileFaceNet → เวกเตอร์หน่วย</li>
-  <li><b>ตัดสิน</b> — คำนวณ cosine similarity ทุกคู่ภาพ ผ่านเมื่อค่าต่ำสุดของทุกคู่ ≥ 0.45 (และเมื่อเลือกโหมด verify: ภาพ neutral ต้องคล้ายแม่แบบที่บันทึกไว้ ≥ 0.55)</li>
-  <li><b>แสดงผล</b> — ผ่าน/ไม่ผ่าน พร้อมรหัสเหตุผล ลำดับท่า คะแนนทุกคู่ภาพ ผลชีพจร (คะแนน, bpm, ความเด่นของยอด, จำนวนภาพ, อัตราภาพ) และเวลาที่ใช้</li>
-</ol>
-<div class="note">การเลือกจังหวะถ่ายภาพบนโทรศัพท์เป็นเพียงการ “เลือกช่วงเวลา” เท่านั้น การตัดสินอัตลักษณ์ทำจากพิกเซลของภาพนิ่งที่ถูกตรวจซ้ำ ไม่ได้เชื่อค่าจากภาพตัวอย่างสด</div>
-</section>
-
-<!-- 5 -->
-<section class="chapter">
-<h1 class="sec">5. รายละเอียดทางเทคนิค</h1>
-<h2>5.1 การตรวจจับใบหน้าและการโค้ช (ML Kit)</h2>
-<p>ตัวตรวจจับทำงานในโหมด fast พร้อม classification, landmarks และ contours ค่าที่ใช้ต่อเฟรม ได้แก่ จำนวนใบหน้า, yaw, pitch, roll, ความน่าจะเป็นตาซ้าย/ขวาเปิด, ความน่าจะเป็นยิ้ม, กรอบใบหน้า (normalised 0–1) และ <b>ระดับการอ้าปาก</b> ซึ่งคำนวณจากเส้นขอบ UPPER_LIP_BOTTOM และ LOWER_LIP_TOP เป็นอัตราส่วนช่องว่างต่อความกว้างปาก (ปิด ≈ 0, อ้าชัดเจน 0.3–0.6 ไม่ขึ้นกับระยะกล้อง) หากไม่มี contours จะใช้ระยะฐานจมูก–ใต้ปากต่อความกว้างปากเป็นตัวแทน (มีการทดสอบหน่วยครอบคลุมทั้งสองเส้นทาง)</p>
-<p>เครื่องหมายทิศทางของ yaw/pitch ขึ้นกับอุปกรณ์ จึงออกแบบให้คำสั่ง “พยักหน้า” และการตรวจ “หันคนละทาง” ไม่ผูกกับเครื่องหมาย (ต้องหันครบทั้งซ้ายและขวาในเซสชันเดียวกัน)</p>
-<h2>5.2 การฝังใบหน้า (MobileFaceNet TFLite)</h2>
-<table class="data kv">
-<tr><td>ไฟล์โมเดล</td><td><code>packages/react-native-ekyc-local/assets/mobile_face_net.tflite</code> ขนาด 5,243,108 ไบต์</td></tr>
-<tr><td>เทนเซอร์เข้า</td><td>[1, 112, 112, 3] float32, ปรับค่าเป็น (พิกเซล − 127.5) / 128, ลำดับ RGB</td></tr>
-<tr><td>เทนเซอร์ออก</td><td>[1, 192] float32 (ตรวจสอบด้วย LiteRT interpreter: ค่า norm ของเวกเตอร์ออก = 1.0)</td></tr>
-<tr><td>การเตรียมภาพ</td><td>กรอบ ML Kit ขยาย 15 % → สี่เหลี่ยมจัตุรัสด้าน √2 เท่าเพื่อกันมุมดำเมื่อหมุน → หมุน −roll → ตัดกลาง → ย่อ 112×112 → JPEG q92 → ถอดรหัสด้วย jpeg-js</td></tr>
-<tr><td>เวลาโดยประมาณ</td><td>30–60 ms ต่อใบหน้าบนโทรศัพท์ระดับกลาง (แสดงจริงบนหน้าผลลัพธ์)</td></tr>
-</table>
-<h2>5.3 เกณฑ์การตัดสินและการปรับเทียบ</h2>
+<h1 class="sec">3. องค์ประกอบทางเทคนิค</h1>
 <table class="data">
-<caption>ตารางที่ 3 เกณฑ์ที่ใช้และที่มา</caption>
-<tr><th style="width:26%">เกณฑ์</th><th style="width:14%">ค่าเริ่มต้น</th><th>ความหมายและที่มา</th></tr>
-<tr><td><code>consistencyMin</code></td><td>0.45</td><td>ค่าคล้ายคลึงต่ำสุดในทุกคู่ภาพของเซสชันเดียวกัน จากการปรับเทียบบน LFW: คู่คนละคน 6.5 % ผ่านเกณฑ์นี้ ขณะที่ภาพในเซสชันเดียวกัน (แสงเดียวกัน ห่างกันไม่กี่วินาที) มีค่าสูงกว่าคู่ LFW ที่ต่างปี/ต่างมุมมาก</td></tr>
-<tr><td><code>matchMin</code></td><td>0.55</td><td>ค่าคล้ายคลึงระหว่างภาพ neutral กับแม่แบบที่บันทึกไว้ (ข้ามเซสชัน) เข้มกว่า: คู่คนละคนบน LFW ผ่าน 1.4 %</td></tr>
-<tr><td>ท่าหัน</td><td>18°</td><td>|yaw| บนโทรศัพท์ (ML Kit)</td></tr>
-<tr><td>พยักหน้า</td><td>15°</td><td>|pitch|</td></tr>
-<tr><td>อ้าปาก</td><td>0.30</td><td>อัตราส่วนช่องว่างริมฝีปาก/ความกว้างปาก</td></tr>
-<tr><td><code>pulseRule</code> / <code>pulseMin</code> / <code>pulseMs</code></td><td>advisory / 0.5 / 7000</td><td>ชั้น rPPG: advisory รายงานคะแนนโดยไม่ตัดสิน, enforce เพิ่มรหัส <code>PULSE_ABSENT</code> เมื่อคะแนน &lt; pulseMin, off ข้ามขั้นตอน; คะแนน 0.5 = ความเด่นของยอด 7 dB (ปรับเทียบบนสัญญาณสังเคราะห์: แยกชัดเมื่อแอมพลิจูดชีพจร ≥ ~2× สัญญาณรบกวน)</td></tr>
+<tr><th style="width:30%">องค์ประกอบ</th><th>เทคโนโลยี / บทบาท</th></tr>
+<tr><td>กล้อง</td><td>react-native-vision-camera 5 — ภาพตัวอย่าง + จับภาพจากพื้นผิวแสดงผลเฉพาะช่วงแสงจอ (4 ภาพ)</td></tr>
+<tr><td>ตรวจจับใบหน้า</td><td>Google ML Kit Face Detection (react-native-vision-camera-face-detector 2): มุมหัน/ก้ม/เอียง, ความน่าจะเป็นตาเปิด, contours ริมฝีปาก (อัตราส่วนช่องว่าง/ความกว้างปาก), กรอบใบหน้า</td></tr>
+<tr><td>กลไก liveness</td><td><code>@ekyc/react-native-ekyc</code>: LivenessSession (ลำดับ, การถือท่า, ช่วงของท่า, recenter, telemetry), Challenge แต่ละท่า, UI/ข้อความไทย-อังกฤษ</td></tr>
+<tr><td>ความต่อเนื่อง</td><td><code>continuity.ts</code> — ติดตามช่องว่างที่ไม่มีใบหน้าและการกระโดดของกรอบต่อเฟรม (ไม่ประมวลผลภาพ)</td></tr>
+<tr><td>แสงจอ</td><td><code>flash.ts</code> (Pearson ต่อ channel, port จาก server) + <code>colour.ts</code> (ตัดกรอบใบหน้า → ย่อ 16×16 → สีเฉลี่ย ผ่าน expo-image-manipulator + jpeg-js)</td></tr>
+<tr><td>ขนาดแอป</td><td>APK arm64 ≈ 46 MB (ML Kit ฝังในตัว + React Native/Hermes) — ไม่มี TensorFlow Lite</td></tr>
 </table>
-<p class="small">ค่าทั้งหมดปรับได้ผ่าน props ของ <code>LocalLivenessCamera</code> และควรวัดซ้ำกับกลุ่มผู้ใช้จริงก่อนใช้งานจริง (ดูหัวข้อ 6.2)</p>
+<h2>3.1 การกำหนดค่า (props ของ <code>LocalLivenessCamera</code>)</h2>
+<table class="data">
+<tr><th style="width:30%">prop</th><th>ความหมาย</th></tr>
+<tr><td><code>challenges</code></td><td>รายการท่าเอง (ค่าเริ่มต้น: นโยบายเดียวกับ server ผ่าน <code>pickLocalChallenges()</code>)</td></tr>
+<tr><td><code>tuning</code></td><td>เกณฑ์ต่อท่า (turn.minYaw, openMouth.minDelta, moveCloser.minChange, …)</td></tr>
+<tr><td><code>continuityRule</code> / <code>continuity</code></td><td>off · advisory (ค่าเริ่มต้น) · enforce; ค่า maxGapMs / maxJump</td></tr>
+<tr><td><code>flashRule</code> / <code>flashMin</code></td><td>off · advisory (ค่าเริ่มต้น) · enforce; เกณฑ์ 0.5</td></tr>
+<tr><td><code>onResult</code></td><td>รับ <code>LocalResult</code>: passed, reasons, continuity, flash, report (stepMetrics, log)</td></tr>
+</table>
 </section>
 
-<!-- 6 -->
 <section class="chapter">
-<h1 class="sec">6. การทดสอบและรูปอ้างอิง</h1>
-<h2>6.1 การทดสอบอัตโนมัติ</h2>
+<h1 class="sec">4. ผลการทดสอบอ้างอิง</h1>
+<h2>4.1 การทดสอบอัตโนมัติ</h2>
 <table class="data">
-<caption>ตารางที่ 4 ชุดทดสอบอัตโนมัติที่เกี่ยวข้อง (ผลล่าสุด 18 ส.ค. 2569)</caption>
 <tr><th style="width:36%">ชุดทดสอบ</th><th style="width:16%">ผล</th><th>ครอบคลุม</th></tr>
-<tr><td><code>packages/react-native-ekyc-local</code> (jest)</td><td>29 ผ่าน / 29</td><td>cosine, การปรับค่าพิกเซล, ถอดรหัส JPEG + base64, การหาคู่ที่แย่ที่สุด, การตัดสิน (สลับภาพ/คนละคน/แม่แบบอ้างอิง), การสุ่มลำดับท่า, NodChallenge, rPPG (สัญญาณจริง/หน้ากาก/drift/ภาพนิ่ง/fail-closed/8–30 fps), การอ่านสีบริเวณผิว</td></tr>
-<tr><td><code>packages/react-native-ekyc</code> (jest)</td><td>105 ผ่าน / 105</td><td>LivenessSession, ทุก Challenge รวมอ้าปากและพยักหน้า, mouthOpenness จาก contours, ข้อความ UI ไทย/อังกฤษครบทุกรหัส</td></tr>
-<tr><td>TypeScript typecheck</td><td>ผ่าน</td><td>ทั้งสองแพ็กเกจและแอป <code>apps/local</code></td></tr>
+<tr><td><code>packages/react-native-ekyc</code> (jest)</td><td>129 ผ่าน</td><td>LivenessSession, ทุก Challenge, ท่า 2 ช่วง (<code>motion.test.ts</code>: ท่าค้าง/รูปนิ่งไม่ผ่านทุกกรณี), recenter, telemetry, ข้อความครบทุกท่า/ทุกช่วง</td></tr>
+<tr><td><code>packages/react-native-ekyc-local</code> (jest)</td><td>42 ผ่าน</td><td>นโยบายสุ่มท่าแบบ server, ความต่อเนื่อง (ราบรื่น/หลุดสั้น/หลุดยาว/กระโดด), flash scorer (หน้าจริง/รูป/ลำดับผิด), path ภาพ file://, โค้ด heavy</td></tr>
+<tr><td>TypeScript</td><td>ผ่าน</td><td>ทั้งสองแพ็กเกจและแอป</td></tr>
 </table>
-<h2>6.2 การปรับเทียบโมเดลบนชุดข้อมูลสาธารณะ</h2>
-<p>เพื่อยืนยันว่าโมเดล MobileFaceNet และขั้นตอนเตรียมภาพทำงานได้จริง ได้ทดสอบกับชุดข้อมูล LFW (Labeled Faces in the Wild) จำนวน 40 บุคคล ภาพละ 6 ภาพ โดยตัดกรอบใบหน้าจากตำแหน่งกลางภาพโดยไม่จัดแนว (สภาพที่ยากกว่าการใช้งานจริงซึ่งภาพมาจากเซสชันเดียวกัน)</p>
-<figure><img src="figures/mobilefacenet-lfw.png" alt="การกระจายค่า cosine similarity"><figcaption>รูปที่ 2 การกระจายค่า cosine similarity ระหว่างคู่ภาพคนเดียวกัน (n=600) และคนละคน (n=780) พร้อมเกณฑ์ที่ใช้</figcaption></figure>
+<h2>4.2 ข้อมูลจากอุปกรณ์จริง (log ที่ส่งเข้าคอมผ่าน Wi-Fi)</h2>
+<p>รอบทดสอบ 18–19 ส.ค. 2569 บนโทรศัพท์ Android ของผู้ทดสอบ 15 รอบ (build 3–7 ก่อนตัดโมเดล) ให้ตัวเลขที่ใช้ปรับระบบ:</p>
 <table class="data">
-<caption>ตารางที่ 5 สถิติจากการปรับเทียบ (LFW, 40 คน)</caption>
-<tr><th>กลุ่ม</th><th>จำนวนคู่</th><th>มัธยฐาน</th><th>p5 / p10</th><th>p95 / p99</th></tr>
-<tr><td>คนเดียวกัน</td><td>600</td><td>0.591</td><td>0.217 / 0.300</td><td>—</td></tr>
-<tr><td>คนละคน</td><td>780</td><td>0.212</td><td>—</td><td>0.467 / 0.559</td></tr>
+<caption>ตารางที่ 3 ค่าที่ทำได้จริงเทียบเกณฑ์ (จาก log)</caption>
+<tr><th>ท่า</th><th>ค่าที่ทำได้ (ช่วง)</th><th>เกณฑ์</th><th>ผลที่ได้</th></tr>
+<tr><td>หันซ้าย</td><td>26.8–49.4°</td><td>25°</td><td>ถึงเกณฑ์ 8/8 ครั้ง</td></tr>
+<tr><td>หันขวา</td><td>40.8–46.1°</td><td>25°</td><td>ถึงเกณฑ์ 5/5 ครั้ง</td></tr>
+<tr><td>อ้าปาก</td><td>0.28–0.39 (ปิด 0.02–0.06)</td><td>+0.18 จาก baseline</td><td>ถึงเกณฑ์ 6/8 ครั้ง (2 ครั้งไม่ได้อ้า)</td></tr>
+<tr><td>พยักหน้า (เดิม)</td><td>6.9–18.7°</td><td>12° → ปรับ 8° แล้วตัดออกจากชุดหลัก</td><td>เกณฑ์เดิมสูงไป (4/6) — สาเหตุหลักที่ "ผ่านยาก"</td></tr>
+<tr><td>มองตรง</td><td>2.7–9.7°</td><td>≤ 12°</td><td>ผ่านทุกครั้ง</td></tr>
 </table>
-<table class="data">
-<caption>ตารางที่ 6 อัตราผิดพลาดตามเกณฑ์ (LFW)</caption>
-<tr><th>เกณฑ์</th><th>ปฏิเสธคนเดียวกัน (FRR)</th><th>รับคนละคน (FAR)</th></tr>
-<tr><td>0.40</td><td>19.0 %</td><td>12.05 %</td></tr>
-<tr><td><b>0.45</b> (consistencyMin)</td><td>25.5 %</td><td>6.54 %</td></tr>
-<tr><td>0.50</td><td>33.7 %</td><td>3.33 %</td></tr>
-<tr><td><b>0.55</b> (matchMin)</td><td>43.5 %</td><td>1.41 %</td></tr>
-<tr><td>0.60</td><td>51.0 %</td><td>0.38 %</td></tr>
-</table>
-<p class="small">หมายเหตุ: ค่า FRR บน LFW สูงเพราะคู่ภาพถ่ายต่างปี ต่างมุม ต่างกล้อง ในการใช้งานจริงภาพทั้งหมดถ่ายภายในเซสชันเดียวกันภายในไม่กี่วินาที ค่าคล้ายคลึงจึงสูงกว่านี้มาก ตัวเลขนี้จึงใช้เป็นขอบเขตล่างของสมรรถนะและใช้เลือกเกณฑ์ที่ปลอดภัยฝั่ง FAR</p>
-<h2>6.3 หน้าจอของแอปพลิเคชัน</h2>
+<p>บทเรียนที่แก้แล้ว: (1) รอบที่ทำท่าครบล้มที่ขั้นวิเคราะห์ด้วยโมเดล (path ภาพและตัวตรวจภาพนิ่ง) → ตัดขั้นนี้ออกจากรุ่นเบา (2) พยักหน้าช่วงกลับที่ต้อง "เลยจุดกลาง" ทำให้ค้างที่ "มองตรงมาที่กล้อง" → เปลี่ยนเป็นกลับมาใกล้ท่ามองตรง (3) เกณฑ์ที่ client/server เคยขัดกัน (18° vs 22°) → client รับเกณฑ์จาก server</p>
 <figure class="shots">
   <img src="figures/local-home.png" alt="หน้าแรก">
   <img src="figures/local-intro.png" alt="หน้าแนะนำ">
   <img src="figures/local-capture.png" alt="หน้าจับภาพ">
 </figure>
-<figcaption>รูปที่ 3 หน้าจอแอป eKYC Local (build 3) บน Android Emulator (API 34, x86_64): หน้าแรกแสดง “MobileFaceNet ready · in [1,112,112,3] → [1,192]” ยืนยันว่าโมเดลโหลดบนเครื่องได้จริง, หน้าแนะนำก่อนสแกน, หน้าจับภาพพร้อมกรอบ คำสั่งที่สุ่มได้ (turnLeft, turnRight, openMouth, nod) และค่าจากตัวตรวจจับ (กล้องของ emulator เป็นภาพจำลอง จึงแสดง “ไม่พบใบหน้าในกรอบ”)</figcaption>
-<figure class="shots">
-  <img src="figures/local-result-fail.png" alt="ผลไม่ผ่าน">
-</figure>
-<figcaption>รูปที่ 4 หน้าผลลัพธ์เมื่อไม่ผ่าน พร้อมเหตุผลเป็นภาษาไทย (ตัวอย่าง: ใบหน้าหลุดจากกรอบเกินเวลาที่กำหนด — <code>LOCAL_faceLost</code>)</figcaption>
+<figcaption>รูปที่ 2 หน้าจอบน Android Emulator (build 3, API 34): หน้าแรก / หน้าแนะนำ / หน้าจับภาพ (กล้อง emulator เป็นภาพจำลอง จึงขึ้น "ไม่พบใบหน้าในกรอบ") — build 11 เพิ่มแถวผลลัพธ์ต่อขั้น ตัวนับผ่าน/ทั้งหมด และช่องส่ง log</figcaption>
 </section>
 
-<!-- 7 -->
 <section class="chapter">
-<h1 class="sec">7. การติดตั้งและการทดสอบด้วยตนเอง</h1>
-<h2>7.1 การติดตั้งไฟล์ APK</h2>
+<h1 class="sec">5. การติดตั้ง ทดสอบ และปรับเทียบ</h1>
 <ol>
-  <li>ดาวน์โหลด <code>ekyc-local-*.apk</code> จากหน้า Releases ของ repo</li>
-  <li>เปิดไฟล์บนโทรศัพท์ Android (สถาปัตยกรรม arm64-v8a, Android 8.0 ขึ้นไป) อนุญาตการติดตั้งจากแหล่งที่ไม่รู้จัก</li>
-  <li>เปิดแอป อนุญาตการใช้กล้อง</li>
+  <li>ติดตั้ง <code>ekyc-local-v1.0.0-b11-arm64.apk</code> (Android 8+, arm64) อนุญาตกล้อง</li>
+  <li>บนคอม (Wi-Fi วงเดียวกัน): <code>python packages/react-native-ekyc-local/scripts/log_receiver.py</code> → พิมพ์ที่อยู่ที่แสดง (เช่น http://192.168.1.145:8765) ในช่อง "ที่อยู่คอม" ของแอป — log ทุกรอบจะวิ่งเข้าคอมและพิมพ์สรุปทันที (Windows Firewall อาจต้องเปิดพอร์ต 8765 ครั้งเดียว)</li>
+  <li>สแกน ≥ 10 รอบ ทำท่าจริง → ดู "ผ่าน X / Y" บนหน้าแรก และสรุปบนคอม (<code>local_calibrate.py</code>): ท่าไหนทำได้เท่าไร/ต้องเท่าไร, การกระจายของ continuity และ flash</li>
+  <li>ปรับเกณฑ์จากตัวเลข: เกณฑ์ที่ต่ำกว่า p20 ของค่าที่ทำได้ → ผ่อน; flash/continuity → เปลี่ยนเป็น enforce เมื่อรอบคนจริง p10 ผ่านเกณฑ์สบาย</li>
 </ol>
-<p class="small">Release ปัจจุบัน: <code>local-v1.0.0-b3</code> (build 3) — ไฟล์ติดตั้งเซ็นด้วย debug keystore สำหรับการทดสอบ ก่อนแจกจ่ายจริงต้องเซ็นด้วยคีย์ของทีม ขนาดไฟล์ประมาณ 59 MB (arm64 เท่านั้น, เปิด ProGuard/shrinkResources) องค์ประกอบหลักคือโมเดล ML Kit ที่ฝังในตัว, TensorFlow Lite runtime, และ React Native/Hermes</p>
-<h2>7.2 ขั้นตอนทดสอบที่แนะนำ</h2>
 <table class="data">
-<caption>ตารางที่ 7 กรณีทดสอบ</caption>
-<tr><th style="width:6%">ลำดับ</th><th style="width:34%">กรณี</th><th>ผลที่คาดหวัง</th></tr>
-<tr><td>1</td><td>ปิด Wi-Fi และข้อมูลมือถือ แล้วใช้งานทุกฟังก์ชัน</td><td>ทำงานได้ครบ ไม่มีข้อผิดพลาดเครือข่าย (พิสูจน์ว่า local 100 %)</td></tr>
-<tr><td>2</td><td>“เริ่มสแกน” และทำท่าตามคำสั่งจนครบ</td><td>ผ่าน; consistency min โดยทั่วไป ≥ 0.6; ลำดับท่าต่างกันในแต่ละครั้ง</td></tr>
-<tr><td>3</td><td>ให้บุคคลที่สองเข้ามาแทนในท่าที่ 2 หรือ 3</td><td>ไม่ผ่าน; รหัส <code>IDENTITY_INCONSISTENT</code>; คู่ที่แย่ที่สุด (weakest) ชี้ไปที่ท่าที่ถูกสลับ</td></tr>
-<tr><td>4</td><td>ไม่ทำท่า หรืออ้าปากไม่กว้าง</td><td>ขั้นตอนไม่ผ่านภายใน 12 วินาที; รหัส <code>LOCAL_timeout</code></td></tr>
-<tr><td>5</td><td>“บันทึกใบหน้าฉัน” แล้ว “ยืนยันว่าเป็นคนที่บันทึกไว้” ด้วยบุคคลเดิม</td><td>ผ่าน; match vs saved ≥ 0.55</td></tr>
-<tr><td>6</td><td>ยืนยันด้วยบุคคลอื่น</td><td>ไม่ผ่าน; รหัส <code>NO_MATCH</code></td></tr>
-<tr><td>7</td><td>ลบใบหน้าที่บันทึกไว้ แล้วกด verify</td><td>แจ้งให้บันทึกก่อน</td></tr>
+<caption>ตารางที่ 4 กรณีทดสอบแนะนำ</caption>
+<tr><th style="width:6%">#</th><th style="width:40%">กรณี</th><th>ผลที่คาดหวัง</th></tr>
+<tr><td>1</td><td>ปิด Wi-Fi/มือถือ (ยกเว้นส่ง log) แล้วสแกน</td><td>ทำงานครบ (พิสูจน์ local 100 %)</td></tr>
+<tr><td>2</td><td>ทำท่าตามคำสั่งจริง</td><td>ผ่าน; ทุกขั้นแสดง ทำได้ ≥ ต้องการ; flash score ≥ 0.5; ต่อเนื่อง "ใช่"</td></tr>
+<tr><td>3</td><td>ค้างท่าเดียว (ไม่กลับมา / ไม่หุบปาก / หลับตาค้าง)</td><td>ขั้นนั้นไม่จบ → <code>LOCAL_timeout</code></td></tr>
+<tr><td>4</td><td>ถือรูปถ่าย/จอมือถืออีกเครื่องแทนหน้า</td><td>ท่าเคลื่อนไหวส่วนใหญ่ไม่ผ่าน; ถ้าผ่านท่าได้ flash score ต่ำ (บันทึกไว้ advisory)</td></tr>
+<tr><td>5</td><td>สลับคนกลางรอบ</td><td>continuity รายงานหลุด/กระโดด (advisory) — ใช้ตัวเลขนี้ตัดสินใจเปิด enforce</td></tr>
 </table>
-<p>บันทึกค่า “consistency min”, “match vs saved” และเวลาที่แสดงบนหน้าผลลัพธ์ของทุกกรณี เพื่อใช้ปรับ <code>consistencyMin</code>/<code>matchMin</code> กับกลุ่มผู้ใช้จริง</p>
-<h2>7.3 การสร้างจากซอร์สโค้ด</h2>
-<pre>npm install
-npm test                                   # 105 + 16 tests
-cd apps/local
-npx expo prebuild --platform android
-cd android &amp;&amp; ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a</pre>
-</section>
-
-<!-- 8 -->
-<section class="chapter">
-<h1 class="sec">8. ความปลอดภัยและข้อมูลส่วนบุคคล</h1>
+<h2>ข้อจำกัดและแผนถัดไป</h2>
 <ul>
-  <li><b>ไม่มีการส่งข้อมูล</b> — โค้ดของแพ็กเกจและแอปไม่มีการเรียกเครือข่ายใด ๆ ตรวจสอบได้จากซอร์สโค้ดและจากการทดสอบในโหมดไม่มีสัญญาณ</li>
-  <li><b>ภาพนิ่งชั่วคราว</b> — ภาพที่ถ่ายระหว่างทำท่าถูกเก็บในแคชชั่วคราวของแอปเพื่อประมวลผล และไม่ได้ถูกส่งไปที่ใด ผู้พัฒนาแอปที่นำไปใช้ควรลบไฟล์ชั่วคราวหลังใช้งาน (แอปตัวอย่างพึ่งพากลไกล้างแคชของระบบ)</li>
-  <li><b>แม่แบบใบหน้า</b> — เก็บเป็นตัวเลข 192 ค่าในไฟล์ <code>ekyc-local-template.json</code> ในพื้นที่ส่วนตัวของแอป ไม่สามารถแปลงกลับเป็นภาพได้ ผู้ใช้ลบได้จากในแอป</li>
-  <li><b>ข้อจำกัดด้านการปลอมแปลง</b> — ดูหัวข้อ 2 และ 9</li>
+  <li>เกณฑ์ flash/continuity ยังไม่ได้ปรับเทียบบนเครื่องจริง → advisory; ต้องเก็บรอบคนจริง ≥ 30 รอบและรอบโจมตี</li>
+  <li>ไม่มี PAD 2 มิติเต็มรูปแบบและไม่มีการจดจำบุคคล — โดยเจตนา (รุ่นเบา)</li>
+  <li>เซ็นด้วย debug keystore; ก่อนแจกจริงต้องใช้ keystore ของทีม</li>
 </ul>
-</section>
-
-<!-- 9 -->
-<section class="chapter">
-<h1 class="sec">9. ข้อจำกัดและแผนงานถัดไป</h1>
+<h2>ภาคผนวก: รหัสเหตุผลและไฟล์สำคัญ</h2>
 <table class="data">
-<caption>ตารางที่ 8 ข้อจำกัดที่ทราบและแนวทาง</caption>
-<tr><th style="width:40%">ข้อจำกัด</th><th>แนวทางในรุ่นถัดไป</th></tr>
-<tr><td>ไม่มีการตรวจสื่อปลอม 2 มิติ (ภาพถ่าย/จอ) บนอุปกรณ์</td><td>เพิ่มโมเดล PAD ขนาดเล็ก (MiniFASNet 1.7 MB แปลงเป็น TFLite) และ/หรือ flash สีจากหน้าจอแบบเดียวกับระบบ server</td></tr>
-<tr><td>rPPG ปรับเทียบบนสัญญาณสังเคราะห์ จึงเป็น advisory</td><td>เก็บคะแนนจากผู้ใช้จริง ≥ 30 คน และหน้ากาก แล้วตั้ง <code>pulseMin</code> และเปลี่ยนเป็น enforce</td></tr>
-<tr><td>เกณฑ์ปรับเทียบจากชุดข้อมูลสาธารณะ ไม่ใช่กลุ่มผู้ใช้จริง</td><td>เก็บค่าจากหน้าผลลัพธ์ในการทดสอบภาคสนามแล้วปรับ</td></tr>
-<tr><td>ยังไม่ได้ทดสอบบนอุปกรณ์จริงหลากรุ่นโดยผู้จัดทำ (ทดสอบผ่านชุดทดสอบอัตโนมัติ, typecheck และ emulator)</td><td>รอบทดสอบภาคสนามตามตารางที่ 7</td></tr>
-<tr><td>ขนาด APK ประมาณ 59 MB</td><td>เปลี่ยน ML Kit เป็นแบบดาวน์โหลดผ่าน Google Play services และตัด GPU delegate ของ TFLite</td></tr>
-<tr><td>เซ็นด้วย debug keystore</td><td>สร้าง keystore ของทีมและตั้งค่าใน <code>signingConfigs.release</code></td></tr>
-</table>
-</section>
-
-<!-- ภาคผนวก -->
-<section class="chapter">
-<h1 class="sec">ภาคผนวก ก. รหัสเหตุผล (reason codes)</h1>
-<table class="data">
-<tr><th style="width:34%">รหัส</th><th>ความหมาย</th></tr>
-<tr><td><code>IDENTITY_INCONSISTENT</code></td><td>คู่ภาพที่แย่ที่สุดต่ำกว่า consistencyMin — บุคคลไม่ตรงกันระหว่างท่า</td></tr>
-<tr><td><code>NO_MATCH</code></td><td>ภาพ neutral ไม่ตรงกับแม่แบบที่บันทึกไว้ (โหมด verify)</td></tr>
-<tr><td><code>NO_FACE</code></td><td>ML Kit ไม่พบใบหน้าในภาพนิ่งบางภาพ</td></tr>
-<tr><td><code>FRAME_UNREADABLE</code></td><td>เตรียมภาพ/ฝังใบหน้าไม่สำเร็จ</td></tr>
-<tr><td><code>FRAME_MISSING</code></td><td>จำนวนภาพที่ประมวลผลได้น้อยกว่าจำนวนท่า</td></tr>
-<tr><td><code>PULSE_ABSENT</code></td><td>ไม่พบชีพจร (เฉพาะเมื่อ <code>pulseRule='enforce'</code>)</td></tr>
-<tr><td><code>LOCAL_timeout / LOCAL_faceLost / LOCAL_multipleFaces / LOCAL_captureFailed / LOCAL_cancelled</code></td><td>ความล้มเหลวฝั่งการจับภาพก่อนถึงขั้นตัดสิน</td></tr>
-</table>
-<h1 class="sec" style="margin-top:18pt">ภาคผนวก ข. โครงสร้างไฟล์ที่เกี่ยวข้อง</h1>
-<table class="data">
-<tr><th style="width:52%">ไฟล์</th><th>เนื้อหา</th></tr>
-<tr><td><code>packages/react-native-ekyc-local/src/identity.ts</code></td><td>คณิตศาสตร์อัตลักษณ์ล้วน: cosine, preprocess, decodeJpeg, consistency, judge, เกณฑ์เริ่มต้น</td></tr>
-<tr><td><code>packages/react-native-ekyc-local/src/embedder.ts</code></td><td>โหลดโมเดล TFLite, ตัด/หมุน/ย่อภาพ, ฝังใบหน้า</td></tr>
-<tr><td><code>packages/react-native-ekyc-local/src/LocalLivenessCamera.tsx</code></td><td>หน้าจอจับภาพและการตัดสินบนเครื่อง</td></tr>
-<tr><td><code>packages/react-native-ekyc-local/src/challenges.ts</code></td><td>ชุดท่าและการสุ่มลำดับ</td></tr>
-<tr><td><code>packages/react-native-ekyc-local/src/pulse.ts</code>, <code>skin.ts</code></td><td>rPPG scorer (TypeScript) และการอ่านสีบริเวณหน้าผาก/แก้ม</td></tr>
-<tr><td><code>packages/react-native-ekyc/src/liveness/challenges.ts</code>, <code>mouth.ts</code></td><td>OpenMouthChallenge, NodChallenge, การวัดการอ้าปาก</td></tr>
-<tr><td><code>packages/react-native-ekyc-local/tests/</code></td><td>ชุดทดสอบ 29 รายการ</td></tr>
-<tr><td><code>apps/local/</code></td><td>แอป Expo สำหรับสร้าง APK (ธีมสว่าง เพื่อแยกจากแอปตัวอย่างระบบ server ที่เป็นธีมมืด)</td></tr>
+<tr><th style="width:36%">รหัส / ไฟล์</th><th>ความหมาย</th></tr>
+<tr><td><code>LOCAL_timeout / LOCAL_faceLost / LOCAL_multipleFaces / LOCAL_captureFailed / LOCAL_cancelled</code></td><td>ล้มระหว่างทำท่า (log บอกว่าขั้นไหน ทำได้เท่าไร)</td></tr>
+<tr><td><code>FLASH_SPOOF</code>, <code>FACE_DISCONTINUITY</code></td><td>เฉพาะเมื่อตั้ง enforce</td></tr>
+<tr><td><code>packages/react-native-ekyc/src/liveness/</code></td><td>Challenge.ts, challenges.ts (ทุกท่า + CHALLENGE_DEFAULTS), LivenessSession.ts, mouth.ts</td></tr>
+<tr><td><code>packages/react-native-ekyc-local/src/</code></td><td>LocalLivenessCamera.tsx, continuity.ts, flash.ts, colour.ts, challenges.ts; <code>heavy/</code> (MobileFaceNet/rPPG, ไม่ใช้ในรุ่นเบา)</td></tr>
+<tr><td><code>packages/react-native-ekyc-local/scripts/</code></td><td>log_receiver.py, local_calibrate.py</td></tr>
 </table>
 <div class="sig"><div>ผู้จัดทำ</div><div>ผู้ตรวจสอบ</div><div>ผู้อนุมัติ</div></div>
 </section>
