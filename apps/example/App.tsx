@@ -46,7 +46,7 @@ const DEFAULT_BASE_URL = 'https://ekyc-api-production-1c11.up.railway.app'
  */
 const DEFAULT_API_KEY = ''
 /** Bumped per published APK so a phone can prove which build it runs. */
-const APP_BUILD = 16
+const APP_BUILD = 17
 
 type Screen =
   | { kind: 'home' }
