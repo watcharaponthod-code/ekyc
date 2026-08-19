@@ -137,3 +137,9 @@ hardening remains.
 - `displayName` in `DecisionResponse` (enroll/verify/identify) → result screen "ยืนยันแล้วว่าเป็น: <name> (xx%)".
 - Evidence retention on the Railway volume; `/v1/audit/gallery?key=` is the review page.
 - Docs rewritten to ≤10 pages each (`docs/pdf/ekyc-local.pdf` 10 p, `ekyc-server.pdf` 9 p).
+
+## Iteration 13 — 2026-08-19: blurred neutral frame → retake on the phone
+
+- 2/8 Railway sessions failed only `QUALITY_SHARPNESS` (44.9, 56.8 vs 60; passing 106–186). The neutral shot is the first frame after the camera opens — motion blur while the phone settles.
+- Fix (b22): `faceSharpness()` in the core package = the server metric (crop face → 160 px → grey → Laplacian variance), threshold `policy.sharpnessMin` × 1.25. `LivenessSession` gains an evidence gate on step 0 (`verifyNeutral`, `acceptEvidence/rejectEvidence`, `maxRetakes` 3): a blurred neutral is dropped and retaken within the same hold, no double capture while a check is pending. Default off (local flow untouched); EKYCCamera opts in.
+- Server policy carries `sharpnessMin`. Docs: server PDF now lists the test key and every endpoint with curl.
