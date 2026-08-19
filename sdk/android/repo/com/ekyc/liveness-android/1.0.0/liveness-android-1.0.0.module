@@ -1,0 +1,152 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.ekyc",
+    "module": "liveness-android",
+    "version": "1.0.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.3.1"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.1.20"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "liveness-android-1.0.0.aar",
+          "url": "liveness-android-1.0.0.aar",
+          "size": 119842,
+          "sha512": "30b45119b7f38a6f8b6c8e823ef884f942c663fec39d50e60602a52b7a5202eaa0c7f47a39f8eb786e6fef2c2e1a771fd94889d6fce6e7c2c79533dba1a73d22",
+          "sha256": "06d9673c431cb986873cf3d679dbf0ccb35e6f16dd3645c9fe227716a9a325d5",
+          "sha1": "46c232a8a0f8d81fb18d640d652e621991180367",
+          "md5": "74cd15d194e178f757bfd3fc19e3738d"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "com.google.mlkit",
+          "module": "face-detection",
+          "version": {
+            "requires": "16.1.7"
+          }
+        },
+        {
+          "group": "androidx.camera",
+          "module": "camera-core",
+          "version": {
+            "requires": "1.4.2"
+          }
+        },
+        {
+          "group": "androidx.camera",
+          "module": "camera-camera2",
+          "version": {
+            "requires": "1.4.2"
+          }
+        },
+        {
+          "group": "androidx.camera",
+          "module": "camera-lifecycle",
+          "version": {
+            "requires": "1.4.2"
+          }
+        },
+        {
+          "group": "androidx.camera",
+          "module": "camera-view",
+          "version": {
+            "requires": "1.4.2"
+          }
+        },
+        {
+          "group": "androidx.appcompat",
+          "module": "appcompat",
+          "version": {
+            "requires": "1.7.0"
+          }
+        },
+        {
+          "group": "androidx.activity",
+          "module": "activity-ktx",
+          "version": {
+            "requires": "1.9.3"
+          }
+        },
+        {
+          "group": "androidx.core",
+          "module": "core-ktx",
+          "version": {
+            "requires": "1.13.1"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.1.20"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "liveness-android-1.0.0.aar",
+          "url": "liveness-android-1.0.0.aar",
+          "size": 119842,
+          "sha512": "30b45119b7f38a6f8b6c8e823ef884f942c663fec39d50e60602a52b7a5202eaa0c7f47a39f8eb786e6fef2c2e1a771fd94889d6fce6e7c2c79533dba1a73d22",
+          "sha256": "06d9673c431cb986873cf3d679dbf0ccb35e6f16dd3645c9fe227716a9a325d5",
+          "sha1": "46c232a8a0f8d81fb18d640d652e621991180367",
+          "md5": "74cd15d194e178f757bfd3fc19e3738d"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseSourcePublication",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "liveness-android-1.0.0-sources.jar",
+          "url": "liveness-android-1.0.0-sources.jar",
+          "size": 24835,
+          "sha512": "dfbb3626a56e6a0526f1f260c3db71c6d11e174c74e47e1d6c7081679b4b31fb17c7429df8b4902072dac000691cc349156599cc12d0b307d9a89ef9b5753269",
+          "sha256": "286d7bfd602620643ae33b687dbf65d5e98d298da61baabdc720b4df2e549885",
+          "sha1": "82bef74f63f2d119b67aa63e2081ff7244578a8c",
+          "md5": "52adfacc90c5927bff9c5273c4faf1fe"
+        }
+      ]
+    }
+  ]
+}

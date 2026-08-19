@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>คู่มือเรียกใช้ eKYC Liveness SDK (local 100 %)</title>
+<link rel="stylesheet" href="style.css">
+<style>
+.cover{height:auto;page-break-after:always;min-height:230mm}
+pre{font-size:10.5pt;line-height:1.3;padding:6pt 8pt;margin:4pt 0 8pt}
+table.data{font-size:14pt}
+figure.shots img{max-height:50mm;width:auto}
+.sig{margin-top:8mm}
+h2{margin:12pt 0 4pt}
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div>
+    <div class="org">โครงการ eKYC · คู่มือนักพัฒนา</div>
+    <div class="rule"></div>
+    <h1>eKYC Liveness SDK<br>คู่มือเรียกใช้ฉบับสั้น</h1>
+    <div class="subtitle">ตรวจความมีชีวิตบนเครื่อง 100 % — Android SDK หนึ่งตัว ใช้ได้จาก Kotlin / Java / Flutter / React Native / Capacitor</div>
+    <table class="meta">
+      <tr><td>แพ็กเกจ</td><td><code>com.ekyc:liveness-android:1.0.0</code> (AAR 120 KB + ML Kit) · สะพานต่อเฟรมเวิร์กใน <code>sdk/bridges/</code></td></tr>
+      <tr><td>เวอร์ชันเอกสาร</td><td>1.0 · 19 สิงหาคม 2569</td></tr>
+      <tr><td>แหล่งโค้ด / ไฟล์</td><td>https://github.com/watcharaponthod-code/ekyc → <code>sdk/</code> · Releases <code>sdk-android-v1.0.0</code> (AAR, แอปตัวอย่าง, เอกสารนี้)</td></tr>
+      <tr><td>ต้องการ</td><td>Android 7.0+ (minSdk 24) กล้องหน้า · ไม่ต้องมีอินเทอร์เน็ต</td></tr>
+    </table>
+  </div>
+  <div class="foot" style="margin-top:12mm">SDK พิสูจน์ว่า "คนจริงกำลังทำท่าตามคำสั่ง" ไม่พิสูจน์ว่าเป็นใคร และไม่ใช่การรับรอง ISO/IEC 30107-3</div>
+</div>
+
+<section>
+<h1 class="sec">1. SDK ทำอะไร และเรียกใช้ได้จากไหน</h1>
+<p>SDK เปิดหน้าจอของตัวเอง (หน้าแนะนำ → กล้อง + คำสั่งท่าทาง → แสงสีจากหน้าจอ → ผล) แล้วส่งผลกลับเป็น JSON หนึ่งก้อน ทุกอย่างประมวลผลบนเครื่องด้วย Google ML Kit ไม่มีภาพหรือข้อมูลใบหน้าออกจากเครื่อง ท่าที่สั่งเป็นชุดเดียวกับระบบเซิร์ฟเวอร์: <b>อ้าปาก (ทุกครั้ง) + สุ่ม 3 จาก กระพริบตา · หันซ้าย · หันขวา · ขยับเข้า · ขยับออก</b> — ทุกท่าเป็นการเคลื่อนไหวจากท่ามองตรงของคนคนนั้นและต้องทำท่ากลับ (หุบปาก ลืมตา ถอยกลับ) รูปนิ่งหรือท่าค้างจึงไม่ผ่าน</p>
+<table class="data">
+<caption>ตารางที่ 1 ทางเลือกตามเฟรมเวิร์ก</caption>
+<tr><th style="width:30%">เฟรมเวิร์ก</th><th>วิธีใช้</th></tr>
+<tr><td>Android Kotlin / Java / Compose</td><td>เพิ่ม dependency → <code>registerForActivityResult(EkycLiveness.Contract())</code> → <code>launch(LivenessConfig())</code></td></tr>
+<tr><td>Flutter</td><td>เพิ่ม dependency ใน <code>android/</code> + คัดลอก <code>sdk/bridges/flutter/EkycLivenessPlugin.kt</code> และ <code>ekyc_liveness.dart</code> → <code>await EkycLiveness.start({'locale':'th'})</code></td></tr>
+<tr><td>React Native (native module)</td><td>คัดลอก <code>sdk/bridges/react-native/EkycLivenessModule.kt</code> + <code>ekycLiveness.ts</code> → <code>await startLiveness({locale:'th'})</code></td></tr>
+<tr><td>React Native / Expo (JS ล้วน)</td><td>แพ็กเกจ <code>@ekyc/react-native-ekyc-local</code> ในรีโปเดียวกัน (มี UI ของตัวเอง ไม่ต้องใช้ AAR) — <code>&lt;LocalLivenessCamera onResult={…} /&gt;</code></td></tr>
+<tr><td>Capacitor / Ionic</td><td>คัดลอก <code>sdk/bridges/capacitor/EkycLivenessPlugin.kt</code> → <code>EkycLiveness.start({config: JSON.stringify({…})})</code></td></tr>
+<tr><td>อื่น ๆ (Unity, KMP, Xamarin…)</td><td>ทุกอย่างที่เปิด Activity ได้: <code>EkycLiveness.intentFromJson(context, json)</code> → <code>startActivityForResult</code> → <code>EkycLiveness.resultFrom(data).toJson()</code></td></tr>
+<tr><td>iOS</td><td>ยังไม่มีในรุ่นนี้ — engine เป็น Kotlin ล้วนไม่แตะ Android พอร์ตเป็น Swift + ML Kit iOS ได้ตรงตัว (แพ็กเกจ React Native ใช้ได้บน iOS ผ่าน vision-camera แต่ยังไม่ได้ทดสอบ)</td></tr>
+</table>
+<figure class="shots">
+  <img src="figures/sdk-intro.png" alt="หน้าแนะนำ">
+  <img src="figures/sdk-capture.png" alt="หน้ากล้อง">
+  <img src="figures/sdk-result.png" alt="หน้าผล">
+  <figcaption>รูปที่ 1 หน้าจอของ SDK บน Android Emulator (ธีมสว่าง): หน้าแนะนำ / หน้ากล้อง (กล้อง emulator เป็นภาพจำลอง จึงขึ้น "ไม่พบใบหน้าในกรอบ") / หน้าผล</figcaption>
+</figure>
+</section>
+
+<section class="chapter">
+<h1 class="sec">2. ติดตั้งและเรียกใช้ (Android)</h1>
+<h2>2.1 เพิ่ม dependency</h2>
+<pre>// settings.gradle.kts
+dependencyResolutionManagement { repositories {
+    google(); mavenCentral()
+    maven { url = uri("https://raw.githubusercontent.com/watcharaponthod-code/ekyc/master/sdk/android/repo") }
+} }
+// app/build.gradle.kts
+dependencies { implementation("com.ekyc:liveness-android:1.0.0") }</pre>
+<p class="small">หรือดาวน์โหลด <code>liveness-android-1.0.0.aar</code> จาก Releases วางใน <code>app/libs</code> แล้วเพิ่ม ML Kit face-detection 16.1.7, CameraX 1.4.2 (core/camera2/lifecycle/view), appcompat, activity-ktx เอง · SDK ประกาศ permission กล้องในไลบรารีและขอเองตอนเปิด · ขนาดแอปเพิ่ม ≈ 6–8 MB</p>
+<h2>2.2 Kotlin — 3 บรรทัด</h2>
+<pre>val liveness = registerForActivityResult(EkycLiveness.Contract()) { r -&gt;
+    if (r.passed) proceed() else showAdvice(r.reasons)      // r.steps, r.flashScore, r.log
+}
+liveness.launch(LivenessConfig())                                            // สุ่มท่าแบบเซิร์ฟเวอร์, ไทย, มีแสงจอ
+liveness.launch(LivenessConfig(challenges = listOf("turnLeft", "openMouth", "moveCloser"), locale = "en"))</pre>
+<h2>2.3 Java</h2>
+<pre>ActivityResultLauncher&lt;LivenessConfig&gt; liveness =
+    registerForActivityResult(new EkycLiveness.Contract(), r -&gt; { if (r.getPassed()) {…} });
+liveness.launch(LivenessConfig.fromJson(null));</pre>
+<h2>2.4 Flutter</h2>
+<pre>// 1) android/app/build.gradle: implementation("com.ekyc:liveness-android:1.0.0")  (+ maven url ข้างบน)
+// 2) คัดลอก sdk/bridges/flutter/EkycLivenessPlugin.kt ไป android/app/src/main/kotlin/&lt;package&gt;/
+//    และใน MainActivity.configureFlutterEngine: flutterEngine.plugins.add(EkycLivenessPlugin())
+// 3) คัดลอก sdk/bridges/flutter/ekyc_liveness.dart ไป lib/
+final r = await EkycLiveness.start({'locale': 'th'});
+if (r['passed'] == true) { … } else { print(r['reasons']); }</pre>
+<h2>2.5 React Native (native module)</h2>
+<pre>// คัดลอก sdk/bridges/react-native/EkycLivenessModule.kt (เพิ่ม EkycLivenessPackage() ใน MainApplication.getPackages)
+// และ ekycLiveness.ts
+const r = await startLiveness({ locale: 'th' })
+if (r.passed) … else console.log(r.reasons, r.steps)</pre>
+<h2>2.6 Capacitor / Ionic</h2>
+<pre>// คัดลอก sdk/bridges/capacitor/EkycLivenessPlugin.kt และ registerPlugin(EkycLivenessPlugin::class.java) ใน MainActivity
+const EkycLiveness = registerPlugin('EkycLiveness')
+const { passed, resultJson } = await EkycLiveness.start({ config: JSON.stringify({ locale: 'th' }) })</pre>
+</section>
+
+<section class="chapter">
+<h1 class="sec">3. Config และ Result (JSON เดียวกันทุกเฟรมเวิร์ก)</h1>
+<table class="data">
+<caption>ตารางที่ 2 Config — ทุกค่าไม่บังคับ</caption>
+<tr><th style="width:26%">key</th><th style="width:22%">ค่าเริ่มต้น</th><th>ความหมาย</th></tr>
+<tr><td><code>challenges</code></td><td><code>[]</code> = สุ่ม</td><td>รายชื่อท่าตามลำดับ: <code>turnLeft turnRight openMouth closeEyes moveCloser moveFarther nod smile</code> (ว่าง = อ้าปากทุกครั้ง + สุ่ม แบบเซิร์ฟเวอร์)</td></tr>
+<tr><td><code>challengeCount</code></td><td>4</td><td>จำนวนท่าเมื่อสุ่ม</td></tr>
+<tr><td><code>locale</code></td><td><code>th</code></td><td><code>th</code> / <code>en</code></td></tr>
+<tr><td><code>flash</code>, <code>flashRule</code></td><td><code>true</code>, <code>advisory</code></td><td>แสงจอ 4 สีตอนท้าย (กันรูป/จอ ไม่กันหน้ากาก); rule: <code>off</code> / <code>advisory</code> (รายงานอย่างเดียว) / <code>enforce</code> (ตกถ้าคะแนน &lt; 0.5)</td></tr>
+<tr><td><code>continuityRule</code></td><td><code>advisory</code></td><td>ใบหน้าอยู่ต่อเนื่องทั้งรอบ (หลุด ≤ 1.5 s, ไม่กระโดด)</td></tr>
+<tr><td><code>holdMs</code></td><td>400</td><td>ค้างท่า ms (กระพริบตาไม่ต้องค้าง)</td></tr>
+<tr><td><code>perStepTimeoutMs</code>, <code>totalTimeoutMs</code></td><td>12000, 60000</td><td>เวลาต่อท่า / ทั้งรอบ</td></tr>
+<tr><td><code>showIntro</code>, <code>showResult</code></td><td><code>true</code>, <code>true</code></td><td>หน้าแนะนำ / หน้าผลของ SDK — ปิดเพื่อใช้ UI ของคุณเอง (ผลยังส่งกลับเหมือนเดิม)</td></tr>
+<tr><td><code>title</code></td><td>null</td><td>หัวข้อหน้าแนะนำ</td></tr>
+<tr><td><code>tuning</code></td><td>null</td><td>เกณฑ์ท่า (องศาหัน, ระยะอ้าปาก, …) — ค่าเริ่มต้นปรับจากเครื่องจริงแล้ว ไม่ควรแก้โดยไม่มีตัวเลข</td></tr>
+</table>
+<table class="data">
+<caption>ตารางที่ 3 Result</caption>
+<tr><th style="width:30%">field</th><th>ความหมาย</th></tr>
+<tr><td><code>passed</code></td><td>ทำท่าครบทุกขั้น (และผ่าน rule ที่ตั้ง enforce)</td></tr>
+<tr><td><code>reasons</code></td><td>ว่างเมื่อผ่าน · <code>LOCAL_timeout</code> <code>LOCAL_faceLost</code> <code>LOCAL_multipleFaces</code> <code>LOCAL_cancelled</code> <code>CAMERA_PERMISSION</code> · <code>FLASH_SPOOF</code> / <code>FACE_DISCONTINUITY</code> (เฉพาะ enforce)</td></tr>
+<tr><td><code>challenges</code></td><td>ท่าที่สั่งในรอบนี้ (เริ่มด้วย <code>center</code> เสมอ)</td></tr>
+<tr><td><code>steps[]</code></td><td>ต่อท่า/ช่วง: <code>best</code> ที่ทำได้ vs <code>needed</code> ที่ต้องการ, <code>direction</code>, <code>reached</code> — ใช้ดูว่าท่าไหนยาก/ปรับเกณฑ์จากข้อมูลจริง</td></tr>
+<tr><td><code>flashScore</code>, <code>flashOk</code></td><td>0..1 ความตรงของสีสะท้อนกับสีจอ (≥ 0.5 ok); null เมื่อปิด</td></tr>
+<tr><td><code>continuityOk</code>, <code>continuityMaxGapMs</code>, <code>continuityMaxJump</code></td><td>ใบหน้าต่อเนื่อง: หลุดนานสุด / กระโดดมากสุด</td></tr>
+<tr><td><code>durationMs</code>, <code>log[]</code></td><td>เวลาทั้งรอบ · log ตัวเลขล้วนของรอบ (ไม่มีภาพ) — แนบเข้า backend ของคุณได้</td></tr>
+</table>
+<pre>{"passed":true,"reasons":[],"challenges":["center","openMouth","turnLeft","closeEyes","moveFarther"],
+ "steps":[{"challenge":"turnLeft","phase":0,"best":41.2,"needed":25.0,"direction":"above","reached":true},…],
+ "durationMs":14820,"flashScore":0.83,"flashOk":true,"continuityOk":true,"continuityMaxGapMs":120,"continuityMaxJump":0.04,
+ "log":["0 session challenges=openMouth,turnLeft,closeEyes,moveFarther flash=true","521 first frame",…]}</pre>
+<h2>สิ่งที่ควรรู้ก่อนใช้จริง</h2>
+<ul>
+  <li>SDK ตอบว่า "คนจริงกำลังทำท่าตามคำสั่ง" — ไม่ตอบว่าเป็นใคร ถ้าต้องการจดจำ/ยืนยันบุคคล ใช้ระบบ client–server (เอกสาร ekyc-server)</li>
+  <li>แสงจอและความต่อเนื่องเป็น advisory จนกว่าจะมีตัวเลขจากเครื่องจริงของคุณ (อ่านจาก <code>steps</code>/<code>flashScore</code> ใน result แล้วค่อยเปิด enforce)</li>
+  <li>Engine ใน <code>sdk/android/liveness/src/main/java/com/ekyc/liveness/engine</code> เป็น Kotlin ล้วน พอร์ต 1:1 จาก <code>packages/react-native-ekyc/src/liveness</code> มีเทสต์ 13 ชุด (ท่าค้างไม่ผ่าน, ต้องกลับมามองตรงระหว่างท่า, เกณฑ์เทียบท่ามองตรงของตัวเอง, timeout, framing, นโยบายสุ่ม, continuity, flash, mouth)</li>
+</ul>
+<div class="sig"><div>ผู้จัดทำ</div><div>ผู้ตรวจสอบ</div><div>ผู้อนุมัติ</div></div>
+</section>
+</body>
+</html>
