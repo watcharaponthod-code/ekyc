@@ -18,7 +18,7 @@ import { IntroView, defaultTheme, type EKYCTheme } from '@ekyc/react-native-ekyc
 import { LocalLivenessCamera, type LocalResult } from '@ekyc/react-native-ekyc-local'
 
 /** Bumped per published APK so a phone can prove which build it runs. */
-const APP_BUILD = 10
+const APP_BUILD = 11
 
 /** Light theme — deliberately the opposite of the server demo's dark one. */
 const theme: EKYCTheme = {
@@ -153,6 +153,9 @@ export default function App() {
                 `เวลา ${(last.timings.captureMs / 1000).toFixed(1)} วินาที\n` +
                 (c
                   ? `ใบหน้าต่อเนื่อง: ${c.ok ? 'ใช่' : 'ไม่'} (หลุดนานสุด ${c.maxGapMs} ms, กระโดดมากสุด ${(c.maxJump * 100).toFixed(0)}%, ${c.faceFrames}/${c.frames} เฟรม) · advisory\n`
+                  : '') +
+                (last.flash
+                  ? `แสงจอสะท้อน (กันรูป/จอ): ${last.flash.note ? `วัดไม่ได้ (${last.flash.note})` : `${last.flash.ok ? 'ผ่าน' : 'ต่ำ'} score ${last.flash.score.toFixed(2)} [${last.flash.colours.join(',')}]`} · advisory\n`
                   : '') +
                 (Object.keys(last.report.stepMetrics).length
                   ? `ขั้นตอน (ทำได้ / ต้องการ):\n` +
