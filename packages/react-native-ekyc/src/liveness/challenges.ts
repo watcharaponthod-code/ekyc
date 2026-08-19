@@ -43,8 +43,14 @@ export const CHALLENGE_DEFAULTS = {
    * while staying ~4× above ML Kit's frame-to-frame pitch jitter (~1–2°).
    */
   nodMinPitchDelta: 8,
-  /** Nod, phase 2: excursion to the *opposite* side, as a fraction of `nodMinPitchDelta` — 8° one way then ≥ 4.8° the other = ≥ 12.8° of travel through the middle. Same log: return legs reached 8.1–12.5°. */
-  nodReturnFraction: 0.6,
+  /**
+   * Nod, phase 2: come back to within this fraction of `nodMinPitchDelta` of
+   * the resting pitch (8° → within 3.2°). A nod is "away, then back to where
+   * you were" — the first device logs showed people returning to neutral,
+   * not past it, and the earlier "opposite side" rule left them stuck at the
+   * recenter prompt. A held tilt still never completes phase 2.
+   */
+  nodReturnFraction: 0.4,
   /** Mouth: contour gap ratio *rise* over the neutral frame. Server checks jawOpen ≥ 0.35 & Δ ≥ 0.20; the contour ratio runs ~0 shut → 0.3+ open. */
   mouthOpenMinDelta: 0.18,
   /** Fallback when no baseline exists (a host that skips `center`). */
@@ -86,7 +92,7 @@ export type SmileOptions = {
 export type NodOptions = {
   /** Pitch excursion from the neutral frame (degrees), either direction, for phase 1. */
   minPitch?: number
-  /** Opposite-side excursion for phase 2, as a fraction of `minPitch`. */
+  /** Phase 2: back to within this fraction of `minPitch` of the resting pitch. */
   returnFraction?: number
 }
 
@@ -278,11 +284,13 @@ export class NodChallenge extends Challenge {
   readonly name: ChallengeName = 'nod'
   /**
    * Phase 1: pitch away from neutral by `minPitch` in either direction (the
-   * memo remembers which). Phase 2: pitch to the *opposite* side by
-   * `returnFraction · minPitch`. Up-then-down or down-then-up both count —
-   * ML Kit's pitch sign differs between devices and what matters is the
-   * movement through the resting pose. A held tilt, or a photo held at an
-   * angle, never completes phase 2. The evidence frame is the phase-2 frame.
+   * memo remembers which). Phase 2: come back to within
+   * `returnFraction · minPitch` of the resting pitch. Up-then-back or
+   * down-then-back both count — ML Kit's pitch sign differs between devices
+   * and what matters is the movement away from and back to the resting pose.
+   * A held tilt, or a photo held at an angle, never completes phase 2. The
+   * evidence frame is the phase-2 frame (the head is back near neutral, which
+   * also means the next step never waits at the recenter prompt).
    */
   override readonly phaseCount = 2
   readonly holdMs = 0
@@ -299,17 +307,15 @@ export class NodChallenge extends Challenge {
       memo.nodSign = Math.sign(delta)
       return true
     }
-    const sign = memo.nodSign ?? 0
-    if (sign === 0) return false
-    return -sign * delta >= minPitch * returnFraction
+    if ((memo.nodSign ?? 0) === 0) return false
+    return Math.abs(delta) <= minPitch * returnFraction
   }
 
-  override metric(signal: FaceSignal, baseline: FaceSignal | null = null, phase = 0, memo: ChallengeMemo = {}): ChallengeMetric {
+  override metric(signal: FaceSignal, baseline: FaceSignal | null = null, phase = 0): ChallengeMetric {
     const { minPitch = CHALLENGE_DEFAULTS.nodMinPitchDelta, returnFraction = CHALLENGE_DEFAULTS.nodReturnFraction } = this.options
     const delta = signal.pitch - (baseline?.pitch ?? 0)
     if (phase === 0) return { value: Math.abs(delta), needed: minPitch, direction: 'above' }
-    const sign = memo.nodSign ?? 0
-    return { value: -sign * delta, needed: minPitch * returnFraction, direction: 'above' }
+    return { value: Math.abs(delta), needed: minPitch * returnFraction, direction: 'below' }
   }
 }
 

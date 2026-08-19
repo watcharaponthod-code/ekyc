@@ -23,7 +23,7 @@ function start(names: Parameters<typeof buildChallenges>[0], options = {}) {
   return { session, events }
 }
 
-describe('nod = up then down (or down then up)', () => {
+describe('nod = away from neutral, then back to it', () => {
   it('a held tilt never completes the step, however long', () => {
     const { session } = start(['nod'])
     let t = feedFor(session, {}, CENTER_MS, 0)
@@ -40,24 +40,32 @@ describe('nod = up then down (or down then up)', () => {
     expect(session.state.stepIndex).toBe(0)
   })
 
-  it('up ≥ 12° then down ≥ 7.2° below neutral completes it, from a resting offset', () => {
+  it('away ≥ 8° then back to within 3.2° of the resting pitch completes it, from a resting offset', () => {
     const { session, events } = start(['nod'])
     let t = feedFor(session, { pitch: -4 }, CENTER_MS, 0) // resting pitch −4 becomes the baseline
     t = feedFor(session, { pitch: -4 + NOD + 1 }, 200, t) // up
     expect(session.state.stepPhase).toBe(1)
-    t = feedFor(session, { pitch: -4 - RETURN + 0.5 }, 100, t) // not far enough down yet
+    t = feedFor(session, { pitch: -4 + RETURN + 1 }, 100, t) // on the way back, not there yet
     expect(session.state.phase).toBe('running')
-    feedFor(session, { pitch: -4 - RETURN - 1 }, 100, t) // down past the return line
+    feedFor(session, { pitch: -4 + RETURN - 0.5 }, 100, t) // back within the return band
     expect(session.state.phase).toBe('uploading')
     expect(events.filter((e) => e.type === 'capture' && e.challenge === 'nod')).toHaveLength(1)
   })
 
-  it('down then up counts equally (device pitch sign is unknown)', () => {
-    const { session } = start(['nod'])
-    let t = feedFor(session, {}, CENTER_MS, 0)
-    t = feedFor(session, { pitch: -(NOD + 1) }, 200, t)
-    feedFor(session, { pitch: RETURN + 1 }, 100, t)
-    expect(session.state.phase).toBe('uploading')
+  it('down then back counts equally (device pitch sign is unknown), and past-neutral counts too', () => {
+    const a = start(['nod'])
+    let t = feedFor(a.session, {}, CENTER_MS, 0)
+    t = feedFor(a.session, { pitch: -(NOD + 1) }, 200, t)
+    feedFor(a.session, { pitch: 0.5 }, 100, t)
+    expect(a.session.state.phase).toBe('uploading')
+    // overshooting through neutral to the other side is still "back"
+    const b = start(['nod'])
+    t = feedFor(b.session, {}, CENTER_MS, 0)
+    t = feedFor(b.session, { pitch: NOD + 2 }, 200, t)
+    t = feedFor(b.session, { pitch: -(RETURN + 3) }, 100, t) // shot past — not within the band
+    expect(b.session.state.phase).toBe('running')
+    feedFor(b.session, { pitch: -1 }, 100, t)
+    expect(b.session.state.phase).toBe('uploading')
   })
 
   it('reports each phase in the telemetry', () => {
@@ -68,8 +76,8 @@ describe('nod = up then down (or down then up)', () => {
     const m = session.state.stepMetrics
     expect(m['1:nod']).toMatchObject({ phase: 0, needed: NOD })
     expect(m['1:nod']!.best).toBeCloseTo(NOD + 3, 5)
-    expect(m['1:nod#1']).toMatchObject({ phase: 1, needed: RETURN })
-    expect(m['1:nod#1']!.best).toBeCloseTo(2, 5)
+    expect(m['1:nod#1']).toMatchObject({ phase: 1, needed: RETURN, direction: 'below' })
+    expect(m['1:nod#1']!.best).toBeCloseTo(2, 5) // came back to within 2° — but only after the phase-2 threshold applied
   })
 
   it('the challenge itself is stateless: the memo carries the direction', () => {
@@ -77,8 +85,8 @@ describe('nod = up then down (or down then up)', () => {
     const memo = {}
     expect(nod.isSatisfied(signal({ pitch: 15 }), signal({}), 0, memo)).toBe(true)
     expect(nod.isSatisfied(signal({ pitch: 15 }), signal({}), 1, memo)).toBe(false) // still up
-    expect(nod.isSatisfied(signal({ pitch: -RETURN }), signal({}), 1, memo)).toBe(true)
-    expect(nod.isSatisfied(signal({ pitch: -RETURN }), signal({}), 1, {})).toBe(false) // no phase 1 → no direction
+    expect(nod.isSatisfied(signal({ pitch: RETURN - 0.1 }), signal({}), 1, memo)).toBe(true) // back near neutral
+    expect(nod.isSatisfied(signal({ pitch: 1 }), signal({}), 1, {})).toBe(false) // no phase 1 recorded → not a nod
   })
 })
 

@@ -214,7 +214,7 @@ describe('explainReasons — local failures', () => {
 
 describe('instructionFor — phases', () => {
   it('tells the user what the second phase wants, in both languages', () => {
-    expect(instructionFor('th', 'ok', 'nod', false, 1)).toBe('แล้วพยักกลับอีกทาง')
+    expect(instructionFor('th', 'ok', 'nod', false, 1)).toBe('แล้วกลับมามองตรง')
     expect(instructionFor('en', 'ok', 'closeEyes', false, 1)).toBe('Open your eyes')
     expect(instructionFor('en', 'ok', 'openMouth', true, 1)).toBe('Close your mouth') // phase beats "hold"
     expect(instructionFor('en', 'ok', 'turnLeft', false, 1)).toBe('Turn your head left') // no phase 2 → the base prompt

@@ -59,6 +59,8 @@ export type SessionReport = {
   thresholds: { consistencyMin: number; matchMin: number; pulseMin: number; pulseRule: PulseRule; topology: Topology }
   timings: { captureMs: number; embedMs: number }
   frames: number
+  /** The last diagnostic lines of this run (errors from the still detector / embedder / pulse), for remote debugging. */
+  log: string[]
 }
 
 export type LocalResult = LocalVerdict & {
@@ -177,7 +179,10 @@ export function LocalLivenessCamera({
 
   const session = useRef<LivenessSession | null>(null)
   const issued = useRef<ChallengeName[]>([])
-  const frames = useRef<Map<string, string>>(new Map())
+  /** key → snapshot path plus the live ML Kit box/roll at the moment it was grabbed (fallback if the still detector fails). */
+  const frames = useRef<Map<string, { uri: string; box: { x: number; y: number; w: number; h: number } | null; roll: number }>>(new Map())
+  /** Live box at the start of the pulse burst — fallback for the burst too. */
+  const burstBox = useRef<{ x: number; y: number; w: number; h: number } | null>(null)
   const pending = useRef<Promise<void>[]>([])
   const latest = useRef<FaceSignal | null>(null)
   const startedAt = useRef(0)
@@ -201,9 +206,10 @@ export function LocalLivenessCamera({
     try {
       const camera = cameraRef.current
       if (!camera) throw new Error('camera not mounted')
+      const live = latest.current
       const image = await camera.takeSnapshot()
       const path = await image.saveToTemporaryFileAsync('jpg', 90)
-      frames.current.set(key, path)
+      frames.current.set(key, { uri: path, box: live && live.count > 0 ? live.box : null, roll: live?.roll ?? 0 })
       log('captured', `${key} ${Date.now() - t0}ms`)
     } catch (error) {
       log('capture failed', `${key}: ${(error as Error).message}`)
@@ -238,6 +244,7 @@ export function LocalLivenessCamera({
   const runPulse = useCallback(async () => {
     burst.current = []
     if (pulseRule === 'off') return
+    burstBox.current = latest.current && latest.current.count > 0 ? latest.current.box : null
     setScreen({ kind: 'pulsing' })
     const started = Date.now()
     let index = 0
@@ -266,7 +273,7 @@ export function LocalLivenessCamera({
       stillDetector.current = createImageFaceDetector({ performanceMode: 'accurate', minFaceSize: 0.15 })
     }
     let box: { x: number; y: number; w: number; h: number } | null = null
-    for (const f of frames.slice(0, 5)) {
+    for (const f of frames.slice(0, 3)) {
       try {
         const faces = stillDetector.current.detectFaces(asFileUri(f.uri))
         if (faces.length === 0) continue
@@ -276,8 +283,14 @@ export function LocalLivenessCamera({
         box = stableFaceBox({ x: face.bounds.x / fw, y: face.bounds.y / fh, w: face.bounds.width / fw, h: face.bounds.height / fh })
         break
       } catch (error) {
-        log('pulse detect failed', (error as Error).message)
+        log('pulse still-detect failed', (error as Error).message)
       }
+    }
+    if (!box && burstBox.current) {
+      // The still detector gave nothing: use the live ML Kit box from the
+      // moment the burst started. Grown a little, it still covers the face.
+      box = stableFaceBox(burstBox.current, 0.1)
+      log('pulse box', 'live-frame fallback')
     }
     if (!box) return { score: 0, bpm: 0, prominenceDb: 0, frames: frames.length, spanMs: 0, samplingHz: 0, patches: 0, note: 'flat' }
     const times: number[] = []
@@ -311,24 +324,37 @@ export function LocalLivenessCamera({
     if (!stillDetector.current) {
       stillDetector.current = createImageFaceDetector({ performanceMode: 'accurate', minFaceSize: 0.15 })
     }
-    for (const [key, uri] of frames.current) {
+    for (const [key, frame] of frames.current) {
+      // 1. locate the face in the still (exact box + roll in the JPEG); if the
+      //    still detector throws or finds nothing, fall back to the live ML Kit
+      //    box captured with the frame — a slightly looser crop beats no crop.
+      let box = frame.box
+      let roll = frame.roll
+      let source = 'live-frame fallback'
       try {
-        const faces = stillDetector.current.detectFaces(asFileUri(uri))
-        if (faces.length === 0) {
+        const faces = stillDetector.current.detectFaces(asFileUri(frame.uri))
+        if (faces.length > 0) {
+          const face = faces.reduce((a, b) => (b.bounds.width > a.bounds.width ? b : a))
+          const fw = face.frameWidth || 1
+          const fh = face.frameHeight || 1
+          box = { x: face.bounds.x / fw, y: face.bounds.y / fh, w: face.bounds.width / fw, h: face.bounds.height / fh }
+          roll = face.rollAngle
+          source = 'still'
+        } else {
           log('no face in still', key)
-          reasons.push('NO_FACE')
-          continue
         }
-        const face = faces.reduce((a, b) => (b.bounds.width > a.bounds.width ? b : a))
-        const fw = face.frameWidth || 1
-        const fh = face.frameHeight || 1
-        const embedding = await ownEmbedder.embed({
-          uri,
-          box: { x: face.bounds.x / fw, y: face.bounds.y / fh, w: face.bounds.width / fw, h: face.bounds.height / fh },
-          roll: face.rollAngle,
-          mirrored: true,
-        })
+      } catch (error) {
+        log('still detect failed', `${key}: ${(error as Error).message}`)
+      }
+      if (!box) {
+        reasons.push('NO_FACE')
+        continue
+      }
+      // 2. embed
+      try {
+        const embedding = await ownEmbedder.embed({ uri: frame.uri, box, roll, mirrored: true })
         embeddings.push({ key, embedding })
+        log('embedded', `${key} (${source})`)
       } catch (error) {
         log('embed failed', `${key}: ${(error as Error).message}`)
         reasons.push('FRAME_UNREADABLE')
@@ -366,6 +392,7 @@ export function LocalLivenessCamera({
       thresholds: { consistencyMin: consistencyMin ?? DEFAULT_CONSISTENCY_MIN, matchMin: matchMin ?? DEFAULT_MATCH_MIN, pulseMin, pulseRule, topology },
       timings: { captureMs, embedMs },
       frames: embeddings.length,
+      log: [...RECENT_LOG],
     }
     onResultRef.current({
       ...verdict,
@@ -433,6 +460,7 @@ export function LocalLivenessCamera({
         thresholds: { consistencyMin: consistencyMin ?? DEFAULT_CONSISTENCY_MIN, matchMin: matchMin ?? DEFAULT_MATCH_MIN, pulseMin, pulseRule, topology },
         timings: { captureMs: Date.now() - startedAt.current, embedMs: 0 },
         frames: 0,
+        log: [...RECENT_LOG],
       }
       onResultRef.current({
         passed: false,

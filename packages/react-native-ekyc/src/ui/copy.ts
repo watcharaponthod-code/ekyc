@@ -61,7 +61,7 @@ const th: Strings = {
     nod: 'เงยหน้าขึ้น แล้วก้มลง',
   },
   challengePhase2: {
-    nod: 'แล้วพยักกลับอีกทาง',
+    nod: 'แล้วกลับมามองตรง',
     closeEyes: 'ลืมตา',
     openMouth: 'หุบปาก',
     smile: 'คลายยิ้ม',
@@ -155,7 +155,7 @@ const en: Strings = {
     nod: 'Tilt your head up, then down',
   },
   challengePhase2: {
-    nod: 'Now nod back the other way',
+    nod: 'Now come back to the middle',
     closeEyes: 'Open your eyes',
     openMouth: 'Close your mouth',
     smile: 'Relax your smile',
