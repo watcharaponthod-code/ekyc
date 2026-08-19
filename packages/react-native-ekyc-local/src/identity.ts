@@ -216,3 +216,20 @@ export function embeddingFromJson(json: string): Float32Array {
   }
   return Float32Array.from(parsed as number[])
 }
+
+/** Mirror an RGBA buffer left↔right. Pure; tested. */
+export function flipHorizontal(rgba: Uint8Array, width: number, height: number): Uint8Array {
+  const out = new Uint8Array(rgba.length)
+  for (let y = 0; y < height; y++) {
+    const row = y * width * 4
+    for (let x = 0; x < width; x++) {
+      const src = row + x * 4
+      const dst = row + (width - 1 - x) * 4
+      out[dst] = rgba[src]!
+      out[dst + 1] = rgba[src + 1]!
+      out[dst + 2] = rgba[src + 2]!
+      out[dst + 3] = rgba[src + 3]!
+    }
+  }
+  return out
+}

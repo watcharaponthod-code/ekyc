@@ -50,9 +50,10 @@ describe('mouth and nod are relative too', () => {
   it('nod is a pitch change from the resting pitch, either direction', () => {
     const c = new NodChallenge()
     const b = signal({ pitch: -6 })
-    expect(c.isSatisfied(signal({ pitch: -6 + 12 }), b)).toBe(true)
-    expect(c.isSatisfied(signal({ pitch: -6 - 12 }), b)).toBe(true)
-    expect(c.isSatisfied(signal({ pitch: 4 }), b)).toBe(false) // only 10 from -6
+    const min = CHALLENGE_DEFAULTS.nodMinPitchDelta
+    expect(c.isSatisfied(signal({ pitch: -6 + min }), b)).toBe(true)
+    expect(c.isSatisfied(signal({ pitch: -6 - min }), b)).toBe(true)
+    expect(c.isSatisfied(signal({ pitch: -6 + min - 2 }), b)).toBe(false) // 2° short
   })
 })
 

@@ -11,6 +11,7 @@ import {
 import {
   DEFAULT_SESSION_OPTIONS,
   DirectionHint,
+  asFileUri,
   FrameOverlay,
   InstructionBanner,
   LivenessSession,
@@ -267,7 +268,7 @@ export function LocalLivenessCamera({
     let box: { x: number; y: number; w: number; h: number } | null = null
     for (const f of frames.slice(0, 5)) {
       try {
-        const faces = stillDetector.current.detectFaces(f.uri)
+        const faces = stillDetector.current.detectFaces(asFileUri(f.uri))
         if (faces.length === 0) continue
         const face = faces.reduce((a, b) => (b.bounds.width > a.bounds.width ? b : a))
         const fw = face.frameWidth || 1
@@ -312,7 +313,7 @@ export function LocalLivenessCamera({
     }
     for (const [key, uri] of frames.current) {
       try {
-        const faces = stillDetector.current.detectFaces(uri)
+        const faces = stillDetector.current.detectFaces(asFileUri(uri))
         if (faces.length === 0) {
           log('no face in still', key)
           reasons.push('NO_FACE')

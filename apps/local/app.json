@@ -16,7 +16,7 @@
     },
     "android": {
       "package": "com.ekyc.local",
-      "versionCode": 5,
+      "versionCode": 6,
       "permissions": [
         "android.permission.CAMERA"
       ],

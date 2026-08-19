@@ -18,7 +18,7 @@
  * data. It collects evidence and shows a good interface while doing it.
  */
 
-export { EKYCClient, buildEvidenceParts } from './client/EKYCClient'
+export { EKYCClient, asFileUri, buildEvidenceParts } from './client/EKYCClient'
 export type {
   CreateSessionRequest,
   EKYCClientOptions,

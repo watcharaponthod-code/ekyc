@@ -106,6 +106,16 @@ hardening remains.
   PAD + flash + rPPG); phases are the phone-side liveness discipline that the
   local flow relies on entirely. Core 126 tests (`tests/motion.test.ts`).
 
+- **11 (first real device log, 2026-08-19):** 6 sessions from the user's phone
+  via the app's "share log": two sessions completed all four movements and
+  still failed with FRAME_UNREADABLE — every snapshot path was a bare
+  `/data/...` path handed to expo-image-manipulator / the ML Kit still
+  detector without a `file://` scheme (`asFileUri`, now applied and pinned by
+  `tests/embedder-uri.test.ts`). The other four timed out on `nod`: natural
+  nods reached 6.9–15.5° (12° threshold caught 4/6), so `nodMinPitchDelta`
+  12→8 (return 4.8°) from that data; turns (27–46° vs 25) and mouth
+  (0.31–0.39 vs 0.21) were fine. Local package 36 tests.
+
 ## Next
 - Collect ≥ 20 genuine sessions per flow (audit endpoint / shared local log),
   run the calibrate scripts, and set thresholds from the p5/p10 of genuine

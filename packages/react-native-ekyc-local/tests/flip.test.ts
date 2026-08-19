@@ -1,4 +1,4 @@
-import { flipHorizontal } from '../src/embedder'
+import { flipHorizontal } from '../src/identity'
 
 describe('flipHorizontal', () => {
   it('mirrors columns and keeps rows', () => {

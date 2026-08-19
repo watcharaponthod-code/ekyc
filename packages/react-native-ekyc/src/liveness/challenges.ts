@@ -35,9 +35,15 @@ export const CHALLENGE_DEFAULTS = {
   centerMaxPitch: 12,
   /** Server: `turn_yaw_min_deg` 22 from neutral. Margin +3 so the mid-hold snapshot clears it. */
   turnMinYawDelta: 25,
-  /** Nod, phase 1: pitch excursion from neutral in either direction. Local-only flow (the server never issues `nod`). */
-  nodMinPitchDelta: 12,
-  /** Nod, phase 2: excursion to the *opposite* side, as a fraction of `nodMinPitchDelta` — up 12° then down ≥ 7.2° = a real nod, ≥ 19° of travel. */
+  /**
+   * Nod, phase 1: pitch excursion from neutral in either direction. Local-only
+   * flow (the server never issues `nod`). Measured on the first real device
+   * log (2026-08-19, 6 sessions, one person): natural nods reached 6.9–15.5°
+   * (median 13°), so 12° caught only 4/6; 8° admits every genuine nod seen
+   * while staying ~4× above ML Kit's frame-to-frame pitch jitter (~1–2°).
+   */
+  nodMinPitchDelta: 8,
+  /** Nod, phase 2: excursion to the *opposite* side, as a fraction of `nodMinPitchDelta` — 8° one way then ≥ 4.8° the other = ≥ 12.8° of travel through the middle. Same log: return legs reached 8.1–12.5°. */
   nodReturnFraction: 0.6,
   /** Mouth: contour gap ratio *rise* over the neutral frame. Server checks jawOpen ≥ 0.35 & Δ ≥ 0.20; the contour ratio runs ~0 shut → 0.3+ open. */
   mouthOpenMinDelta: 0.18,

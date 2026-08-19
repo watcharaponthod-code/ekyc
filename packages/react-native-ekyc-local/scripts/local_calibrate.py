@@ -51,6 +51,10 @@ def series(name: str, values: list[float]) -> None:
 
 
 def main(paths: list[str]) -> int:
+    try:  # Windows consoles default to cp1252; the report uses arrows and ≈
+        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001
+        pass
     rows: list[dict] = []
     for path in paths:
         for line in Path(path).read_text(encoding="utf-8").splitlines():

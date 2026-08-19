@@ -17,9 +17,11 @@ import { Asset } from 'expo-asset'
 import * as ImageManipulator from 'expo-image-manipulator'
 import { loadTensorflowModel, type TensorflowModel } from 'react-native-fast-tflite'
 
-import type { Rect } from '@ekyc/react-native-ekyc'
+import { asFileUri, type Rect } from '@ekyc/react-native-ekyc'
 
-import { EMBEDDING_INPUT, decodeJpeg, l2normalize, preprocessRgba } from './identity'
+import { EMBEDDING_INPUT, decodeJpeg, flipHorizontal, l2normalize, preprocessRgba } from './identity'
+
+export { flipHorizontal }
 import { FACE_THUMB } from './skin'
 
 /** How much of the ML Kit box to grow the crop by on each side. ArcFace-style
@@ -123,7 +125,11 @@ export class FaceEmbedder {
  * rotation corners; resize to 112; JPEG q92 → base64 → RGBA.
  */
 export async function cropFace(crop: FaceCrop): Promise<{ width: number; height: number; rgba: Uint8Array }> {
-  const probe = await ImageManipulator.manipulateAsync(crop.uri, [], { base64: false })
+  // Native capture hands back a bare path (`/data/user/0/…/x.jpg`); the image
+  // manipulator wants a URI with a scheme. Seen in the field (2026-08-19):
+  // every frame of a completed session came back FRAME_UNREADABLE for this.
+  const source = asFileUri(crop.uri)
+  const probe = await ImageManipulator.manipulateAsync(source, [], { base64: false })
   const W = probe.width
   const H = probe.height
   const bx = crop.box.x * W
@@ -143,7 +149,7 @@ export async function cropFace(crop: FaceCrop): Promise<{ width: number; height:
   const roll = crop.roll ?? 0
   if (Math.abs(roll) > 1) actions.push({ rotate: -roll })
   // After rotating, the face is at the centre of the (possibly enlarged) canvas: centre-crop `side`.
-  const first = await ImageManipulator.manipulateAsync(crop.uri, actions, { compress: 1, format: ImageManipulator.SaveFormat.JPEG })
+  const first = await ImageManipulator.manipulateAsync(source, actions, { compress: 1, format: ImageManipulator.SaveFormat.JPEG })
   const innerSide = Math.min(side, first.width, first.height)
   const ix = Math.max(0, Math.round((first.width - innerSide) / 2))
   const iy = Math.max(0, Math.round((first.height - innerSide) / 2))
@@ -167,28 +173,12 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v))
 }
 
-/** Mirror an RGBA buffer left↔right. Pure; tested. */
-export function flipHorizontal(rgba: Uint8Array, width: number, height: number): Uint8Array {
-  const out = new Uint8Array(rgba.length)
-  for (let y = 0; y < height; y++) {
-    const row = y * width * 4
-    for (let x = 0; x < width; x++) {
-      const src = row + x * 4
-      const dst = row + (width - 1 - x) * 4
-      out[dst] = rgba[src]!
-      out[dst + 1] = rgba[src + 1]!
-      out[dst + 2] = rgba[src + 2]!
-      out[dst + 3] = rgba[src + 3]!
-    }
-  }
-  return out
-}
-
 /**
  * Small RGBA thumbnail of a face box — one image op per frame, for rPPG
  * sampling. `box` is normalised to the source image.
  */
-export async function faceThumbnail(uri: string, box: Rect, side: number = FACE_THUMB): Promise<Uint8Array> {
+export async function faceThumbnail(pathOrUri: string, box: Rect, side: number = FACE_THUMB): Promise<Uint8Array> {
+  const uri = asFileUri(pathOrUri)
   const probe = await ImageManipulator.manipulateAsync(uri, [], { base64: false })
   const W = probe.width
   const H = probe.height

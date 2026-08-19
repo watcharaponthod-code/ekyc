@@ -25,7 +25,7 @@ import {
 } from '@ekyc/react-native-ekyc-local'
 
 /** Bumped per published APK so a phone can prove which build it runs. */
-const APP_BUILD = 5
+const APP_BUILD = 6
 
 /**
  * Light theme — deliberately the opposite of the server demo's dark one, so
