@@ -1,7 +1,7 @@
 // Straight from the core source: the package barrel pulls in react-native UI.
 import { NodChallenge } from '../../react-native-ekyc/src/liveness/challenges'
 
-import { LOCAL_CHALLENGES, pickLocalChallenges } from '../src/challenges'
+import { LOCAL_ALWAYS, LOCAL_CHALLENGES, pickLocalChallenges } from '../src/challenges'
 
 function seeded(seed: number): () => number {
   let s = seed
@@ -12,18 +12,23 @@ function seeded(seed: number): () => number {
 }
 
 describe('pickLocalChallenges', () => {
-  it('asks all five by default, each exactly once, in a shuffled order', () => {
-    const picked = pickLocalChallenges(undefined, seeded(1))
-    expect([...picked].sort()).toEqual([...LOCAL_CHALLENGES].sort())
-    expect(LOCAL_CHALLENGES).toEqual(['turnLeft', 'turnRight', 'openMouth', 'moveCloser', 'moveFarther'])
+  it('mirrors the server policy: openMouth always, three more at random, no repeats', () => {
+    for (let i = 0; i < 20; i++) {
+      const picked = pickLocalChallenges(undefined, seeded(i + 1))
+      expect(picked).toHaveLength(4)
+      expect(picked).toContain(LOCAL_ALWAYS)
+      expect(new Set(picked).size).toBe(4)
+      for (const c of picked) expect(LOCAL_CHALLENGES).toContain(c)
+    }
+    expect(LOCAL_CHALLENGES).toEqual(['closeEyes', 'turnLeft', 'turnRight', 'openMouth', 'moveCloser', 'moveFarther'])
   })
   it('the order varies between runs', () => {
     const orders = new Set(Array.from({ length: 30 }, (_, i) => pickLocalChallenges(undefined, seeded(i + 1)).join(',')))
     expect(orders.size).toBeGreaterThan(3)
   })
   it('clamps the count', () => {
-    expect(pickLocalChallenges(0)).toHaveLength(1)
-    expect(pickLocalChallenges(9)).toHaveLength(5)
+    expect(pickLocalChallenges(0)).toEqual(['openMouth'])
+    expect(pickLocalChallenges(9)).toHaveLength(6)
   })
 })
 

@@ -18,7 +18,8 @@
     "react-native-vision-camera": "^5.2.2",
     "react-native-vision-camera-face-detector": "^2.0.6",
     "expo-sharing": "~57.0.13",
-    "react-native-nitro-image": "*"
+    "react-native-nitro-image": "*",
+    "expo-image-manipulator": "~57.0.10"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

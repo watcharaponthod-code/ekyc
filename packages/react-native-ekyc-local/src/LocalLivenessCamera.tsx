@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AccessibilityInfo, ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
-import { Camera, useCameraDevice, useCameraPermission } from 'react-native-vision-camera'
+import { Camera, useCameraDevice, useCameraPermission, type CameraRef } from 'react-native-vision-camera'
 import { createFaceDetectorOutput, type Face } from 'react-native-vision-camera-face-detector'
 
 import {
@@ -27,9 +27,23 @@ import {
 } from '@ekyc/react-native-ekyc'
 
 import { pickLocalChallenges } from './challenges'
+import { meanFaceColour } from './colour'
 import { ContinuityTracker, DEFAULT_CONTINUITY, type ContinuityOptions, type ContinuityReport } from './continuity'
+import { FLASH_MIN, FLASH_PALETTE, flashHex, flashLivenessScore, pickFlashSequence, type Rgb } from './flash'
 
 export type ContinuityRule = 'off' | 'advisory' | 'enforce'
+export type FlashRule = 'off' | 'advisory' | 'enforce'
+
+/** What the flash phase measured. */
+export type FlashReport = {
+  score: number
+  colours: string[]
+  /** Frames whose colour could be read, out of the ones commanded. */
+  measured: number
+  ok: boolean
+  /** '' when measured; otherwise why not (the last error message). */
+  note: string
+}
 
 /**
  * Everything a session measured, in one JSON-able record — what the app
@@ -45,7 +59,9 @@ export type SessionReport = {
   stepMetrics: Record<string, StepMetric>
   /** Face continuity across the whole run (see `continuity.ts`). */
   continuity: ContinuityReport | null
-  thresholds: { continuityRule: ContinuityRule; continuity: ContinuityOptions }
+  /** Screen-flash reflectance check (photo/screen defence), or null when off. */
+  flash: FlashReport | null
+  thresholds: { continuityRule: ContinuityRule; continuity: ContinuityOptions; flashRule: FlashRule; flashMin: number }
   timings: { captureMs: number }
   /** The last diagnostic lines of this run, for remote debugging. */
   log: string[]
@@ -55,6 +71,7 @@ export type LocalResult = {
   passed: boolean
   reasons: string[]
   continuity: ContinuityReport | null
+  flash: FlashReport | null
   report: SessionReport
   /** Which challenges were asked, in order (excluding `center`). */
   challenges: ChallengeName[]
@@ -79,6 +96,15 @@ export type LocalLivenessCameraProps = {
    */
   continuityRule?: ContinuityRule | undefined
   continuity?: Partial<ContinuityOptions> | undefined
+  /**
+   * Screen-flash phase after the challenges: the screen shows four random
+   * colours, the face is snapshotted under each, and the reflected colour must
+   * track the sequence (photo / screen defence — *not* a mask defence).
+   * 'advisory' (default) reports the score; 'enforce' adds FLASH_SPOOF below
+   * `flashMin`; 'off' skips the phase.
+   */
+  flashRule?: FlashRule | undefined
+  flashMin?: number | undefined
   locale?: Locale
   theme?: EKYCTheme
   tuning?: ChallengeTuning
@@ -86,10 +112,14 @@ export type LocalLivenessCameraProps = {
 }
 
 const CAMERA_CONSTRAINTS = [{ fps: 60 }]
+/** How long each flash colour is held before its snapshot (screen paint + exposure). */
+const FLASH_HOLD_MS = 350
 
 type Screen =
   | { kind: 'starting' }
   | { kind: 'capturing' }
+  | { kind: 'flashing'; colour: string }
+  | { kind: 'judging' }
   | { kind: 'result'; passed: boolean; reasons: string[] }
   | { kind: 'error'; message: string }
 
@@ -126,6 +156,8 @@ export function LocalLivenessCamera({
   challenges,
   continuityRule = 'advisory',
   continuity,
+  flashRule = 'advisory',
+  flashMin = FLASH_MIN,
   locale = 'th',
   theme = defaultTheme,
   tuning,
@@ -139,6 +171,8 @@ export function LocalLivenessCamera({
   const [state, setState] = useState<LivenessState>(idleState)
   const [reduceMotion, setReduceMotion] = useState(false)
   const [live, setLive] = useState<FaceSignal | null>(null)
+  const cameraRef = useRef<CameraRef>(null)
+  const latest = useRef<FaceSignal | null>(null)
 
   const onResultRef = useRef(onResult)
   onResultRef.current = onResult
@@ -161,12 +195,13 @@ export function LocalLivenessCamera({
   // ---- verdict -----------------------------------------------------------
 
   const finish = useCallback(
-    (passedSteps: boolean, reasons: string[], now: number) => {
+    (passedSteps: boolean, reasons: string[], now: number, flash: FlashReport | null) => {
       if (finished.current) return
       finished.current = true
       const report = continuityRule === 'off' ? null : tracker.current.report(now)
       const allReasons = [...reasons]
       if (report && !report.ok && continuityRule === 'enforce') allReasons.push('FACE_DISCONTINUITY')
+      if (flash && !flash.ok && flashRule === 'enforce') allReasons.push('FLASH_SPOOF')
       const passed = passedSteps && allReasons.length === 0
       const sessionReport: SessionReport = {
         at: new Date().toISOString(),
@@ -175,17 +210,54 @@ export function LocalLivenessCamera({
         reasons: allReasons,
         stepMetrics: session.current?.state.stepMetrics ?? {},
         continuity: report,
-        thresholds: { continuityRule, continuity: continuityOptions },
+        flash,
+        thresholds: { continuityRule, continuity: continuityOptions, flashRule, flashMin },
         timings: { captureMs: now - startedAt.current },
         log: [...RECENT_LOG],
       }
-      log('verdict', `${passed ? 'pass' : 'fail'} ${allReasons.join(',') || '-'} continuity=${report ? `${report.ok} gap${report.maxGapMs}ms jump${report.maxJump.toFixed(2)}` : 'off'}`)
+      log('verdict', `${passed ? 'pass' : 'fail'} ${allReasons.join(',') || '-'} continuity=${report ? `${report.ok} gap${report.maxGapMs}ms jump${report.maxJump.toFixed(2)}` : 'off'} flash=${flash ? `${flash.score.toFixed(2)} ${flash.note || 'ok'}` : 'off'}`)
       session.current?.notifyResult(passed)
       setScreen({ kind: 'result', passed, reasons: allReasons })
-      onResultRef.current({ passed, reasons: allReasons, continuity: report, report: sessionReport, challenges: issued.current, timings: sessionReport.timings })
+      onResultRef.current({ passed, reasons: allReasons, continuity: report, flash, report: sessionReport, challenges: issued.current, timings: sessionReport.timings })
     },
-    [continuityRule, continuityOptions],
+    [continuityRule, continuityOptions, flashRule, flashMin],
   )
+
+  /**
+   * The flash phase: four random palette colours full-screen, a snapshot of
+   * the face under each, then the reflectance correlation. Any image-op
+   * failure is recorded (not thrown): the check is advisory until this path
+   * has proven itself on the phones in the field.
+   */
+  const runFlash = useCallback(async (): Promise<FlashReport | null> => {
+    if (flashRule === 'off') return null
+    const colours = pickFlashSequence()
+    const box = latest.current && latest.current.count > 0 ? latest.current.box : null
+    if (!box) return { score: 0, colours, measured: 0, ok: false, note: 'no live face box at flash start' }
+    const observed: Rgb[] = []
+    let note = ''
+    for (const name of colours) {
+      setScreen({ kind: 'flashing', colour: name })
+      await new Promise((resolve) => setTimeout(resolve, FLASH_HOLD_MS))
+      try {
+        const camera = cameraRef.current
+        if (!camera) throw new Error('camera not mounted')
+        const image = await camera.takeSnapshot()
+        const path = await image.saveToTemporaryFileAsync('jpg', 85)
+        observed.push(await meanFaceColour(path, box))
+      } catch (error) {
+        note = (error as Error).message
+        log('flash frame failed', `${name}: ${note}`)
+      }
+    }
+    setScreen({ kind: 'judging' })
+    if (observed.length < colours.length) {
+      return { score: 0, colours, measured: observed.length, ok: false, note: note || 'frame(s) missing' }
+    }
+    const score = flashLivenessScore(colours.map((n) => FLASH_PALETTE[n]!), observed)
+    log('flash', `${colours.join(',')} score ${score.toFixed(3)}`)
+    return { score, colours, measured: observed.length, ok: score >= flashMin, note: '' }
+  }, [flashRule, flashMin])
 
   // ---- lifecycle ---------------------------------------------------------
 
@@ -210,7 +282,7 @@ export function LocalLivenessCamera({
     (event: SessionEvent) => {
       if (event.type === 'capture' || event.type === 'stepComplete') return
       if (event.type === 'complete') {
-        finish(true, [], Date.now())
+        void runFlash().then((flash) => finish(true, [], Date.now(), flash))
         return
       }
       log(
@@ -218,9 +290,9 @@ export function LocalLivenessCamera({
         `${event.reason} at step ${event.stepIndex} (${event.challenge ?? '-'}) ` +
           Object.values(event.stepMetrics).map((m) => `${m.challenge}${m.phase ? `#${m.phase}` : ''}:${m.best.toFixed(2)}/${m.needed.toFixed(2)}`).join(' '),
       )
-      finish(false, [`LOCAL_${event.reason}`], Date.now())
+      finish(false, [`LOCAL_${event.reason}`], Date.now(), null)
     },
-    [finish],
+    [finish, runFlash],
   )
   handleEventRef.current = handleEvent
 
@@ -248,6 +320,7 @@ export function LocalLivenessCamera({
       const current = session.current
       if (!current) return
       const signal = toSignal(faces)
+      latest.current = signal
       if (debug) setLive(signal)
       if (current.state.phase === 'running') tracker.current.feed(signal)
       const next = current.feed(signal)
@@ -327,9 +400,11 @@ export function LocalLivenessCamera({
 
   const holding = state.holdProgress > 0.05
   const instruction =
-    state.phase === 'uploading'
-      ? t.uploading
-      : instructionFor(locale, state.framing, state.awaitingRecenter ? 'center' : state.challenge, holding, state.awaitingRecenter ? 0 : state.stepPhase)
+    screen.kind === 'flashing'
+      ? t.flashHold
+      : screen.kind === 'judging' || state.phase === 'uploading'
+        ? t.uploading
+        : instructionFor(locale, state.framing, state.awaitingRecenter ? 'center' : state.challenge, holding, state.awaitingRecenter ? 0 : state.stepPhase)
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
@@ -337,9 +412,10 @@ export function LocalLivenessCamera({
         <Camera
           style={StyleSheet.absoluteFill}
           device={device}
-          isActive={screen.kind === 'capturing' && state.phase === 'running'}
+          isActive={screen.kind === 'flashing' || (screen.kind === 'capturing' && (state.phase === 'running' || state.phase === 'uploading'))}
           outputs={outputs}
           constraints={CAMERA_CONSTRAINTS}
+          ref={cameraRef}
           implementationMode="compatible"
           onError={(error) => {
             log('camera error', error)
@@ -348,6 +424,12 @@ export function LocalLivenessCamera({
           }}
         />
       </View>
+
+      {screen.kind === 'flashing' ? (
+        <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: flashHex(screen.colour), alignItems: 'center', justifyContent: 'center', zIndex: 30 }]}>
+          <Text style={{ color: '#00000099', fontSize: 18, fontWeight: '700' }}>{t.flashHold}</Text>
+        </View>
+      ) : null}
 
       <FrameOverlay size={{ x: 0, y: 0, width, height }} theme={theme} phase={state.phase} framing={state.framing} progress={state.holdProgress} reduceMotion={reduceMotion} />
 

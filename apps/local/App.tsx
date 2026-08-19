@@ -18,7 +18,7 @@ import { IntroView, defaultTheme, type EKYCTheme } from '@ekyc/react-native-ekyc
 import { LocalLivenessCamera, type LocalResult } from '@ekyc/react-native-ekyc-local'
 
 /** Bumped per published APK so a phone can prove which build it runs. */
-const APP_BUILD = 9
+const APP_BUILD = 10
 
 /** Light theme — deliberately the opposite of the server demo's dark one. */
 const theme: EKYCTheme = {
@@ -117,7 +117,7 @@ export default function App() {
       <IntroView
         locale="th"
         theme={theme}
-        steps={['อยู่ในที่ที่มีแสงพอ และถอดแว่นกันแดด', 'จัดใบหน้าให้อยู่ในกรอบวงรี มองตรง', 'ทำตามคำสั่ง: หันซ้าย หันขวา อ้าปาก ขยับเข้า ขยับออก (กลับมามองตรงระหว่างท่า)']}
+        steps={['อยู่ในที่ที่มีแสงพอ และถอดแว่นกันแดด', 'จัดใบหน้าให้อยู่ในกรอบวงรี มองตรง', 'ทำตามคำสั่งทีละท่า แล้วมองจอนิ่งๆ ตอนจอกะพริบสี']}
         consent="ประมวลผลบนเครื่องทั้งหมด ไม่มีการส่งภาพหรือข้อมูลใบหน้าออกจากโทรศัพท์"
         onStart={() => setScreen({ kind: 'capture' })}
         onCancel={() => setScreen({ kind: 'home' })}
@@ -138,7 +138,7 @@ export default function App() {
         <Text style={styles.meta}>{`ทำงานบนเครื่องล้วน ไม่มีเซิร์ฟเวอร์ ไม่มีโมเดล · build ${APP_BUILD}`}</Text>
 
         <Text style={styles.label}>ทดสอบ liveness</Text>
-        <Text style={styles.body}>หันซ้าย · หันขวา · อ้าปากแล้วหุบ · ขยับเข้าแล้วถอย · ขยับออกแล้วกลับ (สุ่มลำดับ กลับมามองตรงระหว่างท่า) + ตรวจว่าใบหน้าอยู่ต่อเนื่องตลอดรอบ</Text>
+        <Text style={styles.body}>คำสั่งแบบเดียวกับตัวเซิร์ฟเวอร์: อ้าปาก (ทุกครั้ง) + สุ่ม 3 จาก กระพริบตา · หันซ้าย · หันขวา · ขยับเข้า · ขยับออก (ทุกท่าเป็นการเคลื่อนไหวจากท่ามองตรง กลับมามองตรงระหว่างท่า) → จบด้วยแสงสีจากหน้าจอ 4 สี (กันรูป/จอ) + ตรวจว่าใบหน้าอยู่ต่อเนื่องตลอดรอบ</Text>
         <Button label="เริ่มสแกน" onPress={() => setScreen({ kind: 'intro' })} />
         {runs.total > 0 ? <Text style={styles.meta}>{`รอบนี้เปิดแอป: ผ่าน ${runs.passed} / ${runs.total}`}</Text> : null}
 
@@ -227,7 +227,7 @@ export default function App() {
         />
 
         <Text style={styles.footnote}>
-          ตัวนี้พิสูจน์ว่า “มีคนอยู่หน้ากล้องและทำท่าตามคำสั่งจริงต่อเนื่องทั้งรอบ” — ไม่มีการจดจำว่าเป็นใคร และยังไม่มีการตรวจภาพถ่าย/จอบนเครื่อง (ระบบที่เชื่อมเซิร์ฟเวอร์เป็นตัวที่มีชั้นเหล่านั้น)
+          ตัวนี้พิสูจน์ว่า “มีคนอยู่หน้ากล้องและทำท่าตามคำสั่งจริงต่อเนื่องทั้งรอบ” + แสงจอสะท้อนบนใบหน้า (กันรูปถ่าย/จอ — ไม่ใช่หน้ากาก) — ไม่มีการจดจำว่าเป็นใคร (ระบบที่เชื่อมเซิร์ฟเวอร์มีชั้น PAD/identity เต็ม)
         </Text>
       </ScrollView>
     </SafeAreaView>

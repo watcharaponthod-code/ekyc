@@ -23,7 +23,8 @@
     "react-native-nitro-modules": ">=0.35.0",
     "react-native-svg": ">=15.0.0",
     "react-native-vision-camera": ">=5.0.0",
-    "react-native-vision-camera-face-detector": ">=2.0.0"
+    "react-native-vision-camera-face-detector": ">=2.0.0",
+    "expo-image-manipulator": "*"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
@@ -36,9 +37,6 @@
   "sideEffects": false,
   "peerDependenciesMeta": {
     "expo-asset": {
-      "optional": true
-    },
-    "expo-image-manipulator": {
       "optional": true
     },
     "react-native-fast-tflite": {

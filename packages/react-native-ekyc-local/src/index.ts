@@ -13,7 +13,10 @@
  * The MobileFaceNet + rPPG edition is under `@ekyc/react-native-ekyc-local/heavy`.
  */
 export { LocalLivenessCamera } from './LocalLivenessCamera'
-export type { ContinuityRule, LocalLivenessCameraProps, LocalResult, SessionReport } from './LocalLivenessCamera'
+export type { ContinuityRule, FlashReport, FlashRule, LocalLivenessCameraProps, LocalResult, SessionReport } from './LocalLivenessCamera'
+export { FLASH_MIN, FLASH_PALETTE, flashHex, flashLivenessScore, pickFlashSequence } from './flash'
+export type { Rgb } from './flash'
+export { meanFaceColour } from './colour'
 export { ContinuityTracker, DEFAULT_CONTINUITY } from './continuity'
 export type { ContinuityOptions, ContinuityReport } from './continuity'
-export { LOCAL_CHALLENGES, pickLocalChallenges } from './challenges'
+export { LOCAL_ALWAYS, LOCAL_CHALLENGES, pickLocalChallenges } from './challenges'

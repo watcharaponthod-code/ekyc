@@ -35,5 +35,10 @@
     "src",
     "tests",
     "tflite.d.ts"
+  ],
+  "exclude": [
+    "src/heavy/embedder.ts",
+    "src/heavy/LocalLivenessCameraHeavy.tsx",
+    "src/heavy/index.ts"
   ]
 }
