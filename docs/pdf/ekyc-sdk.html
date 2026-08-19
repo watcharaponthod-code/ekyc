@@ -45,12 +45,6 @@ h2{margin:12pt 0 4pt}
 <tr><td>อื่น ๆ (Unity, KMP, Xamarin…)</td><td>ทุกอย่างที่เปิด Activity ได้: <code>EkycLiveness.intentFromJson(context, json)</code> → <code>startActivityForResult</code> → <code>EkycLiveness.resultFrom(data).toJson()</code></td></tr>
 <tr><td>iOS</td><td>ยังไม่มีในรุ่นนี้ — engine เป็น Kotlin ล้วนไม่แตะ Android พอร์ตเป็น Swift + ML Kit iOS ได้ตรงตัว (แพ็กเกจ React Native ใช้ได้บน iOS ผ่าน vision-camera แต่ยังไม่ได้ทดสอบ)</td></tr>
 </table>
-<figure class="shots">
-  <img src="figures/sdk-intro.png" alt="หน้าแนะนำ">
-  <img src="figures/sdk-capture.png" alt="หน้ากล้อง">
-  <img src="figures/sdk-result.png" alt="หน้าผล">
-  <figcaption>รูปที่ 1 หน้าจอของ SDK บน Android Emulator (ธีมสว่าง): หน้าแนะนำ / หน้ากล้อง (กล้อง emulator เป็นภาพจำลอง จึงขึ้น "ไม่พบใบหน้าในกรอบ") / หน้าผล</figcaption>
-</figure>
 </section>
 
 <section class="chapter">
@@ -90,6 +84,12 @@ if (r.passed) … else console.log(r.reasons, r.steps)</pre>
 <pre>// คัดลอก sdk/bridges/capacitor/EkycLivenessPlugin.kt และ registerPlugin(EkycLivenessPlugin::class.java) ใน MainActivity
 const EkycLiveness = registerPlugin('EkycLiveness')
 const { passed, resultJson } = await EkycLiveness.start({ config: JSON.stringify({ locale: 'th' }) })</pre>
+<figure class="shots">
+  <img src="figures/sdk-intro.png" alt="หน้าแนะนำ">
+  <img src="figures/sdk-capture.png" alt="หน้ากล้อง">
+  <img src="figures/sdk-result.png" alt="หน้าผล">
+  <figcaption>รูปที่ 1 หน้าจอของ SDK บน Android Emulator (ธีมสว่าง): หน้าแนะนำ / หน้ากล้อง (กล้อง emulator เป็นภาพจำลอง จึงขึ้น "ไม่พบใบหน้าในกรอบ") / หน้าผล</figcaption>
+</figure>
 </section>
 
 <section class="chapter">
