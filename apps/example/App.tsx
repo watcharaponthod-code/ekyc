@@ -39,14 +39,15 @@ import {
  */
 const DEFAULT_BASE_URL = 'https://ekyc-api-production-1c11.up.railway.app'
 /**
- * The Railway deployment above requires `X-API-Key` (`EKYC_API_KEYS`). The key
- * is *not* in source: paste it once on the home screen — it is kept in
- * SecureStore on the device — or set it in Railway → Variables and share it
- * out of band.
+ * The Railway deployment above requires `X-API-Key` (`EKYC_API_KEYS`). This is
+ * the *test* key, baked in at the user's request so testers do not have to
+ * type it; the field on the home screen can still override it for one run.
+ * Rotate it in Railway → Variables when the test phase ends, and move it out
+ * of source before any real deployment.
  */
-const DEFAULT_API_KEY = ''
+const DEFAULT_API_KEY = 'ekyc_test_C1j1qeat6X1dwegYIuNjAqkmP0O2pATK'
 /** Bumped per published APK so a phone can prove which build it runs. */
-const APP_BUILD = 18
+const APP_BUILD = 20
 
 type Screen =
   | { kind: 'home' }
@@ -96,7 +97,9 @@ export default function App() {
         SecureStore.getItemAsync('ekyc.apiKey').catch(() => null),
       ])
       if (savedUrl) setBaseUrl(savedUrl)
-      if (savedKey) setApiKey(savedKey)
+      // A baked-in key always wins over whatever an older build saved on the
+      // device (an empty or mistyped key there produced 401/403 for testers).
+      if (savedKey && !DEFAULT_API_KEY) setApiKey(savedKey)
     })()
   }, [])
   useEffect(() => {
