@@ -209,6 +209,7 @@ export default function UIPreview({ locale = 'th' }: { locale?: Locale }) {
         challenge: (['center', ...CHALLENGES][stepIndex] ?? null) as ChallengeName | null,
         holdProgress: params.progress ?? 0,
         framing: framing === 'ok' ? 'ok' : (framing as Framing),
+        stepMetrics: {},
       }
     : (state ?? {
         phase: 'running',
