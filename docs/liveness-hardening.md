@@ -78,6 +78,7 @@ hardening remains.
   ML Kit contours → `mouthOpenness`, pulse burst phase before flash,
   `attestation` prop, `apiKey`. Server fast suite 145, module 105.
 
+<<<<<<< HEAD
 - **10 (movement, not pose — 2026-08-19):** the user caught `nod` passing on
   a held tilt. Challenges now have **phases** (`Challenge.phaseCount`,
   `capturePhase`, memo): nod = pitch away ≥12° then back the other way ≥7.2°
@@ -89,8 +90,29 @@ hardening remains.
   (`challengePhase2`). Server-side proof is unchanged (stills + pose deltas +
   PAD + flash + rPPG); phases are the phone-side liveness discipline that the
   local flow relies on entirely. Core 126 tests (`tests/motion.test.ts`).
+=======
+- **9 (measure-first tuning, 2026-08-19):** no session data existed for the
+  reported "hard to pass" runs (Railway held only 2 test sessions; laptop
+  audit empty), so the fix is instrumentation + removing structural
+  strictness, not moving numbers by hand:
+  challenges are judged as a *change from the person's own neutral frame*
+  (turn Δyaw, nod Δpitch, mouth Δratio) with per-step `stepMetrics`
+  (best/needed) surfaced in state, failed events, client logs and the local
+  session log; client thresholds derive from the server `SessionPolicy`
+  (`turnYawMinDeg`, `neutralYawMaxDeg` + margin via `tuningFromPolicy`) instead
+  of a second copy (client 18° vs server 22° was a built-in mismatch); local
+  identity uses **star topology** (each pose vs neutral, not left-vs-right)
+  and flip-TTA embeddings; `flash_rule` advisory until measured; `/v1/audit`
+  + `scripts/audit_report.py` (server) and `local_calibrate.py` (phone log)
+  give per-gate distributions; project skill `.claude/skills/liveness-tuning`.
+  Tests: core 113, local 32, server 149.
+>>>>>>> local-only
 
 ## Next
+- Collect ≥ 20 genuine sessions per flow (audit endpoint / shared local log),
+  run the calibrate scripts, and set thresholds from the p5/p10 of genuine
+  sessions with impostor guards — then flip flash/pulse to enforce where the
+  data supports it.
 - **rPPG calibration on phones** — record `bona_fide` + `mask_*` with retention
   on, run `pad_eval.py`, decide `pulse_min` / `pulse_rule=enforce`. This is the
   gate between "defended" and "measured".
