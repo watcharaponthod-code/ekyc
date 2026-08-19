@@ -109,6 +109,7 @@ class FakeFaceBackend:
 
     name = "fake"
     supports_expressions = True
+    parallel_workers = 2  # exercised by the API tests
 
     def __init__(
         self,

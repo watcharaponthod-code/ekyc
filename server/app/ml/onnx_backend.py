@@ -68,6 +68,9 @@ class OnnxFaceBackend:
     name = "onnx"
     #: Five points cannot measure mouth opening or smile.
     supports_expressions = False
+    #: onnxruntime InferenceSession.run is thread-safe: frames of one
+    #: submission are measured concurrently (see verification.verify_evidence).
+    parallel_workers = 4
 
     def __init__(self, models_dir: Path) -> None:
         self.models_dir = models_dir

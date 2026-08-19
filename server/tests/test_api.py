@@ -563,3 +563,44 @@ class TestEvidenceViews:
 
     def test_unknown_session_is_404(self, client):
         assert client.get("/v1/audit/s_nope/frames").status_code == 404
+
+
+class TestSpeedAndIdentity:
+    def test_flash_frames_are_measured_light_and_the_response_carries_timing(self, client, jpeg_bytes, monkeypatch):
+        from app.config import settings as cfg
+        import app.services.verification as v
+
+        monkeypatch.setattr(cfg, "flash_frames", 4)
+        calls = {"full": 0, "flash": 0}
+        real_measure, real_flash = v.measure, v.measure_flash
+        monkeypatch.setattr(v, "measure", lambda b, k, i: calls.__setitem__("full", calls["full"] + 1) or real_measure(b, k, i))
+        monkeypatch.setattr(v, "measure_flash", lambda b, k, i: calls.__setitem__("flash", calls["flash"] + 1) or real_flash(b, k, i))
+        session = make_session(client)
+        body = _submit_with_flash(client, session, jpeg_bytes, real=True).json()
+        assert calls == {"full": 1 + len(session["challenges"]), "flash": 4}
+        assert isinstance(body["serverMs"], int)
+        assert "FLASH_SPOOF" not in body["reasons"] and body["scores"]["flash"] > 0.5
+
+    def test_identify_and_verify_say_who(self, client, jpeg_bytes, monkeypatch):
+        # The fake backend never turns its head, so pose fails; make the rules
+        # permissive enough for the outcome path by issuing a single openMouth
+        # challenge and answering it with a scripted open mouth.
+        import app.main as main_module
+        from app.config import Thresholds
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "challenges_full", 1)
+        monkeypatch.setattr(main_module, "thresholds", Thresholds(expression_rule="advisory"))
+        enrol = make_session(client, displayName="สมชาย")
+        assert enrol["challenges"] == ["openMouth"]
+        body = submit(client, enrol, jpeg_bytes).json()
+        assert body["decision"] == "pass", body
+        assert body["displayName"] == "สมชาย" and body["personId"]
+
+        ident = make_session(client, purpose="identify")
+        body = submit(client, ident, jpeg_bytes).json()
+        assert body["decision"] == "pass" and body["displayName"] == "สมชาย" and body["match"]["ok"]
+
+        ver = make_session(client, purpose="verify", personId=body["personId"])
+        body = submit(client, ver, jpeg_bytes).json()
+        assert body["decision"] == "pass" and body["displayName"] == "สมชาย"

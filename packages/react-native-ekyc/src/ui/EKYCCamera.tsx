@@ -109,7 +109,7 @@ type Screen =
   | { kind: 'capturing' }
   | { kind: 'pulsing' }
   | { kind: 'flashing'; color: string }
-  | { kind: 'result'; passed: boolean; reasons: string[] }
+  | { kind: 'result'; passed: boolean; reasons: string[]; detail?: string }
   | { kind: 'error'; message: string }
 
 /**
@@ -222,14 +222,14 @@ export function EKYCCamera({
   //    encodes in tens of milliseconds, a full sensor frame in seconds.
   // Preview resolution (screen-sized) is far more than the server's models
   // consume (ArcFace 112 px, MiniFASNet 80 px), so nothing is lost.
-  const snapshot = useCallback(async (key: string) => {
+  const snapshot = useCallback(async (key: string, quality: number = 85) => {
     const startedAt = Date.now()
     try {
       const camera = cameraRef.current
       if (!camera) throw new Error('camera not mounted')
       // Grab the pixels NOW (fast, in memory); encode off the critical path.
       const image = await camera.takeSnapshot()
-      const path = await image.saveToTemporaryFileAsync('jpg', 85)
+      const path = await image.saveToTemporaryFileAsync('jpg', quality)
       frames.current.set(key, path)
       log('captured', `${key} ${Date.now() - startedAt}ms`)
     } catch (error) {
@@ -310,7 +310,10 @@ export function EKYCCamera({
       session.current?.notifyResult(decision.decision === 'pass')
       if (decision.decision === 'pass') hapticSuccess()
       else hapticFailure()
-      setScreen({ kind: 'result', passed: decision.decision === 'pass', reasons: decision.reasons })
+      const who = decision.displayName
+        ? `${strings(locale).recognisedAs(decision.displayName)}${decision.match ? ` (${(decision.match.score * 100).toFixed(0)}%)` : ''}`
+        : undefined
+      setScreen({ kind: 'result', passed: decision.decision === 'pass', reasons: decision.reasons, ...(who ? { detail: who } : {}) })
       onResultRef.current(decision)
     } catch (error) {
       hapticFailure()
@@ -331,7 +334,9 @@ export function EKYCCamera({
     for (let i = 0; i < colors.length; i++) {
       setScreen({ kind: 'flashing', color: colors[i]! })
       await new Promise((resolve) => setTimeout(resolve, FLASH_HOLD_MS))
-      await snapshot(`flash_${i}`)
+      // The flash frames only need their mean face colour on the server:
+      // a smaller JPEG uploads faster and changes nothing about the score.
+      await snapshot(`flash_${i}`, 60)
     }
     await submit()
   }, [snapshot, submit])
@@ -564,6 +569,7 @@ export function EKYCCamera({
       <ResultView
         passed={screen.passed}
         reasons={screen.reasons}
+        detail={screen.detail}
         locale={locale}
         theme={theme}
         reduceMotion={reduceMotion}

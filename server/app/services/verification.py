@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 import cv2
 import numpy as np
@@ -169,6 +170,28 @@ def _measure_single_pass(backend: FaceBackend, analyze, key: str, image_bgr: np.
     return facts
 
 
+def measure_flash(backend: FaceBackend, key: str, image_bgr: np.ndarray) -> FrameFacts:
+    """The cheap measurement for a flash frame: find the face, read its mean
+    colour. No PAD, no embedding — the flash gate only needs the colour, and
+    the challenge frames already carry the identity and PAD evidence. On the
+    onnx backend this turns four ArcFace+MiniFASNet passes into four detects.
+    """
+    analyze = getattr(backend, "analyze", None)
+    if callable(analyze):
+        faces = analyze(image_bgr)
+        if not faces:
+            return FrameFacts(key=key, face_count=0)
+        face = max(faces, key=lambda f: f.width)
+        companions = sum(1 for f in faces if f.width >= face.width * COMPANION_WIDTH_RATIO)
+        return FrameFacts(key=key, face_count=companions, det_score=face.score, pad=1.0, face_rgb=mean_face_color(image_bgr, face.bbox))
+    faces = backend.detect(image_bgr)
+    if not faces:
+        return FrameFacts(key=key, face_count=0)
+    face = max(faces, key=lambda f: f.width)
+    companions = sum(1 for f in faces if f.width >= face.width * COMPANION_WIDTH_RATIO)
+    return FrameFacts(key=key, face_count=companions, det_score=face.score, pad=1.0, face_rgb=mean_face_color(image_bgr, face.bbox))
+
+
 def measure_skin(backend: FaceBackend, image_bgr: np.ndarray) -> list[tuple[float, float, float]] | None:
     """The cheap per-frame measurement for the rPPG burst: find the face and
     average its skin patches. No PAD, no embedding — a burst is dozens of
@@ -202,7 +225,10 @@ def verify_evidence(
     flash_commanded = flash_commanded or []
 
     facts: dict[str, FrameFacts] = {}
-    for key in [*required_frame_keys(issued_challenges), *flash_frame_keys(len(flash_commanded))]:
+    evidence_keys = required_frame_keys(issued_challenges)
+    flash_keys = flash_frame_keys(len(flash_commanded))
+    decoded: list[tuple[str, np.ndarray, bool]] = []
+    for key in [*evidence_keys, *flash_keys]:
         raw = frames.get(key)
         if raw is None:
             continue
@@ -211,7 +237,24 @@ def verify_evidence(
         except FrameError as error:
             log.warning("frame rejected", extra={"context": {"frame": key, "reason": error.code}})
             return DecisionOutput(reasons=[error.code]), facts, hashes
-        facts[key] = measure(backend, key, image)
+        decoded.append((key, image, key in flash_keys))
+
+    def measure_one(item: tuple[str, np.ndarray, bool]) -> FrameFacts:
+        key, image, is_flash = item
+        return measure_flash(backend, key, image) if is_flash else measure(backend, key, image)
+
+    # Frames are independent; on a thread-safe backend (onnxruntime sessions
+    # are) measure them concurrently. MediaPipe's landmarker is not, so the
+    # deepface backend stays sequential.
+    workers = getattr(backend, "parallel_workers", 1)
+    with timed("measure.all", frames=len(decoded), workers=workers):
+        if workers > 1 and len(decoded) > 1:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                for key_facts in pool.map(measure_one, decoded):
+                    facts[key_facts.key] = key_facts
+        else:
+            for item in decoded:
+                facts[item[0]] = measure_one(item)
 
     pulse_samples: list[tuple[int, list[tuple[float, float, float]]]] = []
     if pulse_requested > 0:

@@ -26,6 +26,8 @@ type Strings = {
   holdOn: string
   uploading: string
   flashHold: string
+  /** "It's you: <name>" line on the success screen. */
+  recognisedAs: (name: string) => string
   pulseHold: string
   intro: { title: string; body: string; steps: string[]; start: string; consent: string }
   result: {
@@ -73,6 +75,7 @@ const th: Strings = {
   holdOn: 'ค้างไว้',
   uploading: 'กำลังตรวจสอบ…',
   flashHold: 'มองที่หน้าจอ ค้างไว้สักครู่',
+  recognisedAs: (name) => `ยืนยันแล้วว่าเป็น: ${name}`,
   pulseHold: 'อยู่นิ่งๆ มองกล้อง สักครู่',
   intro: {
     title: 'ยืนยันว่าเป็นคุณ',
@@ -171,6 +174,7 @@ const en: Strings = {
   holdOn: 'Hold steady',
   uploading: 'Checking…',
   flashHold: 'Look at the screen, hold still',
+  recognisedAs: (name) => `Recognised as: ${name}`,
   pulseHold: 'Hold still and look at the camera',
   intro: {
     title: "Let's check it's you",

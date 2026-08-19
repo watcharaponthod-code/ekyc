@@ -182,6 +182,9 @@ async def submit_evidence(
         status = 404 if error.code == "SESSION_NOT_FOUND" else 409
         raise HTTPException(status_code=status, detail=error.code) from error
 
+    import time as _time
+
+    t0 = _time.perf_counter()
     issued = list(record.challenges)
     # Every frame arrives under the single `frames` field; the *filename*
     # carries the key (`neutral.jpg`, `turnLeft.jpg`). Dynamic field names are
@@ -210,6 +213,7 @@ async def submit_evidence(
             response.decision = "fail"
             response.reasons = [error.code]
 
+    response.serverMs = int((_time.perf_counter() - t0) * 1000)
     log_event(
         "submit.decided",
         session=record.id,
@@ -220,6 +224,8 @@ async def submit_evidence(
         match=round(response.match.score, 4) if response.match else None,
         pad=response.scores.get("pad"),
         consistency=response.scores.get("identityConsistency"),
+        server_ms=response.serverMs,
+        frames=len(uploaded),
     )
 
     record.state = response.decision
@@ -242,6 +248,7 @@ def _apply_outcome(db: Session, record, embedding, response: DecisionResponse) -
     if record.purpose == "enroll":
         person = persons_service.enroll(db, embedding, record.display_name, record.id)
         response.personId = person.id
+        response.displayName = person.display_name
         return
 
     if record.purpose == "verify":
@@ -249,7 +256,10 @@ def _apply_outcome(db: Session, record, embedding, response: DecisionResponse) -
         ok = score >= thresholds.match_min
         response.match = MatchResult(ok=ok, score=round(score, 4))
         response.personId = record.person_id if ok else None
-        if not ok:
+        if ok:
+            person = db.get(persons_service.Person, record.person_id)
+            response.displayName = person.display_name if person else None
+        else:
             response.decision = "fail"
             response.reasons = ["NO_MATCH"]
         return
@@ -262,6 +272,7 @@ def _apply_outcome(db: Session, record, embedding, response: DecisionResponse) -
         return
     person, score = found
     response.personId = person.id
+    response.displayName = person.display_name
     response.match = MatchResult(ok=True, score=round(score, 4))
 
 

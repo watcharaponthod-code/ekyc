@@ -13,6 +13,8 @@ export type ResultViewProps = {
   reduceMotion?: boolean
   onRetry?: (() => void) | undefined
   onDone?: (() => void) | undefined
+  /** Extra line under the verdict — e.g. who was recognised and the match score. */
+  detail?: string | undefined
 }
 
 /**
@@ -28,6 +30,7 @@ export function ResultView({
   locale = 'th',
   theme = defaultTheme,
   reduceMotion = false,
+  detail,
   onRetry,
   onDone,
 }: ResultViewProps) {
@@ -60,9 +63,14 @@ export function ResultView({
         </Text>
 
         {passed ? (
-          <Text style={[theme.typography.body, styles.text, { color: theme.colors.textDim }]}>
-            {t.successBody}
-          </Text>
+          <>
+            <Text style={[theme.typography.body, styles.text, { color: theme.colors.textDim }]}>
+              {t.successBody}
+            </Text>
+            {detail ? (
+              <Text style={[theme.typography.title, styles.text, { color: theme.colors.text, marginTop: 8 }]}>{detail}</Text>
+            ) : null}
+          </>
         ) : (
           <View style={styles.advice}>
             {advice.map((line) => (

@@ -279,7 +279,11 @@ export type Decision = {
   reasons: string[]
   scores: Record<string, unknown>
   personId?: string
+  /** Who was enrolled/recognised, when the server knows a name. */
+  displayName?: string | null
   match?: { ok: boolean; score: number }
+  /** Server wall time for the submit, ms. */
+  serverMs?: number | null
 }
 
 export type Person = {

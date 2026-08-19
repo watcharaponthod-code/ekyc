@@ -148,7 +148,11 @@ class DecisionResponse(BaseModel):
     reasons: list[str] = Field(default_factory=list)
     scores: dict[str, Any] = Field(default_factory=dict)
     personId: str | None = None
+    #: The matched/enrolled person's display name, so the phone can say who.
+    displayName: str | None = None
     match: MatchResult | None = None
+    #: Server-side wall time for the whole submit, ms — the tuning number for "it is slow".
+    serverMs: int | None = None
 
 
 class PersonOut(BaseModel):
