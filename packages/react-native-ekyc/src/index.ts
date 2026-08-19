@@ -52,7 +52,9 @@ export type { Locale } from './ui/copy'
 
 export { LivenessSession } from './liveness/LivenessSession'
 export { Challenge } from './liveness/Challenge'
+export type { ChallengeMetric } from './liveness/Challenge'
 export {
+  CHALLENGE_DEFAULTS,
   CenterChallenge,
   CloseEyesChallenge,
   DEFAULT_YAW_SIGN,
@@ -62,6 +64,7 @@ export {
   TurnLeftChallenge,
   TurnRightChallenge,
   buildChallenges,
+  tuningFromPolicy,
 } from './liveness/challenges'
 export type {
   CenterOptions,
@@ -96,5 +99,6 @@ export type {
   SessionEvent,
   SessionOptions,
   SessionPolicy,
+  StepMetric,
   StepObservation,
 } from './types'

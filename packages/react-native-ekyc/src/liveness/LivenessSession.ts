@@ -6,6 +6,7 @@ import {
   type LivenessState,
   type SessionEvent,
   type SessionOptions,
+  type StepMetric,
 } from '../types'
 import type { Challenge } from './Challenge'
 
@@ -39,6 +40,10 @@ export class LivenessSession {
   private capturedThisRun = false
   private badFramingSince: number | null = null
   private badFramingKind: Framing | null = null
+  /** The signal at the moment `center` completed — every later challenge is judged relative to it. */
+  private baseline: FaceSignal | null = null
+  /** Best value each step reached, in the challenge's own unit — the tuning telemetry. */
+  private metrics: Record<string, StepMetric> = {}
 
   constructor(
     private readonly challenges: Challenge[],
@@ -58,8 +63,14 @@ export class LivenessSession {
       challenge: challenge ? challenge.name : null,
       holdProgress: this.currentHold > 0 ? Math.min(1, this.heldMs / this.currentHold) : 0,
       framing: this.framing,
+      stepMetrics: { ...this.metrics },
       ...(this.reason ? { reason: this.reason } : {}),
     }
+  }
+
+  /** The neutral-frame signal, once `center` has completed. */
+  get neutralBaseline(): FaceSignal | null {
+    return this.baseline
   }
 
   start(now: number): LivenessState {
@@ -73,6 +84,8 @@ export class LivenessSession {
     this.resetHold()
     this.badFramingSince = null
     this.badFramingKind = null
+    this.baseline = null
+    this.metrics = {}
     return this.state
   }
 
@@ -112,7 +125,8 @@ export class LivenessSession {
     if (signal.t - this.stepStartedAt < this.options.minStepMs) return this.state
 
     const challenge = this.challenges[this.stepIndex]!
-    if (!challenge.isSatisfied(signal)) {
+    this.recordMetric(challenge, signal)
+    if (!challenge.isSatisfied(signal, this.baseline)) {
       this.resetHold()
       return this.state
     }
@@ -127,6 +141,9 @@ export class LivenessSession {
     }
 
     if (this.heldMs >= hold) {
+      // The centre step's last confirming frame becomes the baseline every
+      // later challenge is measured against.
+      if (this.stepIndex === 0) this.baseline = signal
       this.onEvent({ type: 'stepComplete', challenge: challenge.name, stepIndex: this.stepIndex })
       this.advance(signal.t)
     }
@@ -169,8 +186,30 @@ export class LivenessSession {
     this.phase = 'failed'
     this.reason = reason
     this.resetHold()
-    this.onEvent({ type: 'failed', reason })
+    const challenge = this.challenges[this.stepIndex]
+    this.onEvent({
+      type: 'failed',
+      reason,
+      stepIndex: this.stepIndex,
+      challenge: challenge ? challenge.name : null,
+      stepMetrics: { ...this.metrics },
+    })
     return this.state
+  }
+
+  /** Keep the best value this step has reached (max for 'above', min for 'below'). */
+  private recordMetric(challenge: Challenge, signal: FaceSignal): void {
+    const m = challenge.metric(signal, this.baseline)
+    if (!m) return
+    const key = `${this.stepIndex}:${challenge.name}`
+    const prev = this.metrics[key]
+    const better = !prev || (m.direction === 'above' ? m.value > prev.best : m.value < prev.best)
+    if (better) {
+      this.metrics[key] = { challenge: challenge.name, best: m.value, needed: m.needed, direction: m.direction, t: signal.t }
+    } else if (prev) {
+      // keep `needed` fresh (it can move once the baseline lands)
+      prev.needed = m.needed
+    }
   }
 
   private resetHold(): void {

@@ -64,6 +64,11 @@ class SessionPolicy(BaseModel):
     holdMs: int = 400
     perStepTimeoutMs: int = 12_000
     totalTimeoutMs: int = 60_000
+    #: The server's own pose thresholds, echoed to the phone so its predicates
+    #: are derived from the rule that will judge the frames (client = rule +
+    #: margin) instead of a second, drifting copy of the number.
+    turnYawMinDeg: float | None = None
+    neutralYawMaxDeg: float | None = None
 
 
 class PulsePlan(BaseModel):

@@ -382,7 +382,10 @@ def _check_flash(data: DecisionInput, th: Thresholds, scores: dict[str, object])
     observed = [data.facts[k].face_rgb for k in keys]
     score = flash_liveness_score(data.flash_commanded, observed)
     scores["flash"] = round(score, 4)
-    return ["FLASH_SPOOF"] if score < th.flash_min else []
+    scores["flashRule"] = th.flash_rule
+    if score < th.flash_min and th.flash_rule == "enforce":
+        return ["FLASH_SPOOF"]
+    return []
 
 
 def _openness_ratio(closed: float, neutral: float) -> float:

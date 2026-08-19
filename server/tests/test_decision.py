@@ -305,16 +305,22 @@ class TestActiveFlash:
         assert out.passed, out.reasons
         assert out.scores["flash"] > TH.flash_min
 
-    def test_a_photo_that_holds_one_colour_is_flagged_spoof(self):
+    def test_a_photo_that_holds_one_colour_scores_low_and_is_advisory_by_default(self):
         photo = [(0.5, 0.4, 0.35)] * len(FLASH_CMD)
         out = decide(with_flash(good_case(), photo), TH)
-        assert "FLASH_SPOOF" in out.reasons
         assert out.scores["flash"] < TH.flash_min
+        assert out.scores["flashRule"] == "advisory"
+        assert "FLASH_SPOOF" not in out.reasons  # recorded, not enforced, until phones are measured
 
-    def test_a_replay_of_a_different_sequence_is_flagged_spoof(self):
+    def test_enforce_flags_a_photo_and_a_replay_of_a_different_sequence(self):
+        enforce = Thresholds(flash_rule="enforce")
+        photo = [(0.5, 0.4, 0.35)] * len(FLASH_CMD)
+        assert "FLASH_SPOOF" in decide(with_flash(good_case(), photo), enforce).reasons
         other = [FLASH_PALETTE[k] for k in ("blue", "white", "red", "green")]
-        out = decide(with_flash(good_case(), [_reflected(c) for c in other]), TH)
+        out = decide(with_flash(good_case(), [_reflected(c) for c in other]), enforce)
         assert "FLASH_SPOOF" in out.reasons
+        # and a real reflection still passes under enforce
+        assert decide(with_flash(good_case(), [_reflected(c) for c in FLASH_CMD]), enforce).passed
 
     def test_a_missing_flash_frame_is_caught(self):
         data = with_flash(good_case(), [_reflected(c) for c in FLASH_CMD])

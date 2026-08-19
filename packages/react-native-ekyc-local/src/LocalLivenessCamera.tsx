@@ -28,19 +28,43 @@ import {
   type LivenessState,
   type Locale,
   type SessionEvent,
+  type StepMetric,
 } from '@ekyc/react-native-ekyc'
 
 import { FaceEmbedder, faceThumbnail } from './embedder'
-import { judge, type FrameEmbedding, type LocalVerdict } from './identity'
+import { DEFAULT_CONSISTENCY_MIN, DEFAULT_MATCH_MIN, judge, type FrameEmbedding, type LocalVerdict, type Topology } from './identity'
 import { pickLocalChallenges } from './challenges'
 import { DEFAULT_PULSE_MIN, pulseLivenessScore, type PulseResult, type Rgb } from './pulse'
 import { DEFAULT_PATCHES, FACE_THUMB, samplePatches, stableFaceBox } from './skin'
 
 export type PulseRule = 'off' | 'advisory' | 'enforce'
 
+/**
+ * Everything a session measured, in one JSON-able record — what the app
+ * appends to its session log and what `scripts/local_calibrate.py` reads.
+ * Numbers only; no images, no embeddings.
+ */
+export type SessionReport = {
+  at: string
+  challenges: ChallengeName[]
+  passed: boolean
+  reasons: string[]
+  /** Best value each step reached vs what it needed (from LivenessSession). */
+  stepMetrics: Record<string, StepMetric>
+  /** Compared pairs and the worst one. */
+  consistency: { topology: Topology; min: number; weakest: [string, string] | null; pairs: { a: string; b: string; similarity: number }[] } | null
+  match: { score: number; ok: boolean } | null
+  pulse: PulseResult | null
+  thresholds: { consistencyMin: number; matchMin: number; pulseMin: number; pulseRule: PulseRule; topology: Topology }
+  timings: { captureMs: number; embedMs: number }
+  frames: number
+}
+
 export type LocalResult = LocalVerdict & {
   /** rPPG result of the hold-still burst, or null when `pulseRule` is 'off'. */
   pulse: PulseResult | null
+  /** The full numeric record of this session, for logging and tuning. */
+  report: SessionReport
   /** Embedding of the neutral frame — save it to enrol this person locally. */
   embedding: Float32Array | null
   /** Per-frame embeddings, for the debug screen. */
@@ -76,6 +100,8 @@ export type LocalLivenessCameraProps = {
   pulseRule?: PulseRule | undefined
   pulseMs?: number | undefined
   pulseMin?: number | undefined
+  /** Which pairs the identity check compares — see `Topology`. Default 'star'. */
+  topology?: Topology | undefined
   locale?: Locale
   theme?: EKYCTheme
   tuning?: ChallengeTuning
@@ -126,6 +152,7 @@ export function LocalLivenessCamera({
   pulseRule = 'advisory',
   pulseMs = 7000,
   pulseMin = DEFAULT_PULSE_MIN,
+  topology = 'star',
   locale = 'th',
   theme = defaultTheme,
   tuning,
@@ -314,6 +341,7 @@ export function LocalLivenessCamera({
       ...(consistencyMin !== undefined ? { consistencyMin } : {}),
       ...(matchMin !== undefined ? { matchMin } : {}),
       reference: reference ?? null,
+      topology,
     })
     const expected = 1 + issued.current.length
     if (embeddings.length < expected && !reasons.includes('NO_FACE') && !reasons.includes('FRAME_UNREADABLE')) {
@@ -325,17 +353,31 @@ export function LocalLivenessCamera({
     log('verdict', `${passed ? 'pass' : 'fail'} ${allReasons.join(',') || '-'} min=${verdict.consistency.min.toFixed(3)} embed=${embedMs}ms`)
     session.current?.notifyResult(passed)
     setScreen({ kind: 'result', passed, reasons: allReasons })
+    const report: SessionReport = {
+      at: new Date().toISOString(),
+      challenges: issued.current,
+      passed,
+      reasons: allReasons,
+      stepMetrics: session.current?.state.stepMetrics ?? {},
+      consistency: verdict.consistency,
+      match: verdict.match ?? null,
+      pulse,
+      thresholds: { consistencyMin: consistencyMin ?? DEFAULT_CONSISTENCY_MIN, matchMin: matchMin ?? DEFAULT_MATCH_MIN, pulseMin, pulseRule, topology },
+      timings: { captureMs, embedMs },
+      frames: embeddings.length,
+    }
     onResultRef.current({
       ...verdict,
       passed,
       reasons: allReasons,
       pulse,
+      report,
       embedding: neutral,
       frames: embeddings,
       timings: { captureMs, embedMs },
       challenges: issued.current,
     })
-  }, [ownEmbedder, consistencyMin, matchMin, reference, measurePulse, pulseRule, pulseMin])
+  }, [ownEmbedder, consistencyMin, matchMin, reference, measurePulse, pulseRule, pulseMin, topology])
 
   // ---- lifecycle ---------------------------------------------------------
 
@@ -369,10 +411,41 @@ export function LocalLivenessCamera({
         void runPulse().then(judgeAll)
         return
       }
-      log('liveness failed', event.reason)
+      log(
+        'liveness failed',
+        `${event.reason} at step ${event.stepIndex} (${event.challenge ?? '-'}) ` +
+          Object.values(event.stepMetrics).map((m) => `${m.challenge}:${m.best.toFixed(2)}/${m.needed.toFixed(2)}`).join(' '),
+      )
       setScreen({ kind: 'result', passed: false, reasons: [`LOCAL_${event.reason}`] })
+      // A capture-phase failure is a session too — the log needs it, with the
+      // metrics that say how close each step got.
+      const reasons = [`LOCAL_${event.reason}`]
+      const report: SessionReport = {
+        at: new Date().toISOString(),
+        challenges: issued.current,
+        passed: false,
+        reasons,
+        stepMetrics: event.stepMetrics,
+        consistency: null,
+        match: null,
+        pulse: null,
+        thresholds: { consistencyMin: consistencyMin ?? DEFAULT_CONSISTENCY_MIN, matchMin: matchMin ?? DEFAULT_MATCH_MIN, pulseMin, pulseRule, topology },
+        timings: { captureMs: Date.now() - startedAt.current, embedMs: 0 },
+        frames: 0,
+      }
+      onResultRef.current({
+        passed: false,
+        reasons,
+        consistency: { min: 1, weakest: null, pairs: [], topology },
+        pulse: null,
+        report,
+        embedding: null,
+        frames: [],
+        timings: report.timings,
+        challenges: issued.current,
+      })
     },
-    [snapshot, runPulse, judgeAll],
+    [snapshot, runPulse, judgeAll, consistencyMin, matchMin, pulseMin, pulseRule, topology],
   )
   handleEventRef.current = handleEvent
 
@@ -555,7 +628,7 @@ function Notice({ theme, text, action, onPress }: { theme: EKYCTheme; text: stri
   )
 }
 
-const idleState: LivenessState = { phase: 'idle', stepIndex: 0, stepCount: 1, challenge: null, holdProgress: 0, framing: 'noFace' }
+const idleState: LivenessState = { phase: 'idle', stepIndex: 0, stepCount: 1, challenge: null, holdProgress: 0, framing: 'noFace', stepMetrics: {} }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },

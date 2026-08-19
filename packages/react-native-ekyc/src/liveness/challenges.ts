@@ -1,5 +1,5 @@
 import type { ChallengeName, FaceSignal } from '../types'
-import { Challenge } from './Challenge'
+import { Challenge, type ChallengeMetric } from './Challenge'
 
 /**
  * Which way ML Kit's `yawAngle` grows when the user turns to *their own* left.
@@ -19,6 +19,33 @@ import { Challenge } from './Challenge'
  */
 export const DEFAULT_YAW_SIGN: 1 | -1 = -1
 
+/**
+ * Defaults, and where they come from.
+ *
+ * None of these is a magic number typed once and forgotten: each mirrors a
+ * server rule (documented in `server/app/config.py`) plus a small margin, so
+ * the phone confirms a pose only once the server would also accept it. When a
+ * session comes from the server, `EKYCCamera` overrides them from the
+ * `policy` the server issued (`tuningFromPolicy`), so the two never drift
+ * apart. Every value is a *change from the person's own neutral frame*.
+ */
+export const CHALLENGE_DEFAULTS = {
+  /** |yaw| and |pitch| the centre step accepts as "facing the camera". */
+  centerMaxYaw: 12,
+  centerMaxPitch: 12,
+  /** Server: `turn_yaw_min_deg` 22 from neutral. Margin +3 so the mid-hold snapshot clears it. */
+  turnMinYawDelta: 25,
+  /** Nod: pitch change from neutral. Local-only flow (the server never issues `nod`). */
+  nodMinPitchDelta: 12,
+  /** Mouth: contour gap ratio *rise* over the neutral frame. Server checks jawOpen ≥ 0.35 & Δ ≥ 0.20; the contour ratio runs ~0 shut → 0.3+ open. */
+  mouthOpenMinDelta: 0.18,
+  /** Fallback when no baseline exists (a host that skips `center`). */
+  mouthOpenMinAbsolute: 0.3,
+  /** ML Kit mean eye-open probability at or below this = closed. Open reads 0.9+. */
+  eyesClosedMaxOpen: 0.5,
+  smileMin: 0.7,
+} as const
+
 export type CenterOptions = {
   /** Max |yaw| and |pitch| in degrees that still counts as facing the camera. */
   maxYaw?: number
@@ -26,7 +53,7 @@ export type CenterOptions = {
 }
 
 export type TurnOptions = {
-  /** How far the head must rotate, in degrees. */
+  /** How far the head must rotate from the neutral frame, in degrees. */
   minYaw?: number
   yawSign?: 1 | -1
 }
@@ -41,12 +68,14 @@ export type SmileOptions = {
 }
 
 export type NodOptions = {
-  /** How far the head must pitch (degrees) from level, either direction. */
+  /** Pitch change from the neutral frame (degrees), either direction. */
   minPitch?: number
 }
 
 export type OpenMouthOptions = {
-  /** `FaceSignal.mouthOpen` must reach this. Contour gap ratio: 0.3 is a clear open mouth. */
+  /** Rise of `FaceSignal.mouthOpen` over the neutral frame. */
+  minDelta?: number
+  /** Absolute floor used only when there is no baseline. */
   minMouthOpen?: number
 }
 
@@ -54,7 +83,8 @@ export type OpenMouthOptions = {
  * Face the camera straight on.
  *
  * Always the first step: its captured frame is the `neutral` evidence the
- * server measures every other frame against.
+ * server measures every other frame against, and the baseline every later
+ * challenge on the phone is judged relative to.
  */
 export class CenterChallenge extends Challenge {
   readonly name: ChallengeName = 'center'
@@ -64,8 +94,13 @@ export class CenterChallenge extends Challenge {
   }
 
   isSatisfied(signal: FaceSignal): boolean {
-    const { maxYaw = 12, maxPitch = 12 } = this.options
+    const { maxYaw = CHALLENGE_DEFAULTS.centerMaxYaw, maxPitch = CHALLENGE_DEFAULTS.centerMaxPitch } = this.options
     return Math.abs(signal.yaw) <= maxYaw && Math.abs(signal.pitch) <= maxPitch
+  }
+
+  override metric(signal: FaceSignal): ChallengeMetric {
+    const { maxYaw = CHALLENGE_DEFAULTS.centerMaxYaw } = this.options
+    return { value: Math.max(Math.abs(signal.yaw), Math.abs(signal.pitch)), needed: maxYaw, direction: 'below' }
   }
 }
 
@@ -90,11 +125,21 @@ export class CloseEyesChallenge extends Challenge {
   isSatisfied(signal: FaceSignal): boolean {
     // ML Kit's open-probability lags a fast blink and the two eyes rarely
     // bottom out on the same frame, so require the *average* below the
-    // threshold rather than both eyes independently. 0.5 accepts a real blink;
-    // an open eye reads 0.9+.
-    const { maxEyeOpen = 0.5 } = this.options
+    // threshold rather than both eyes independently.
+    const { maxEyeOpen = CHALLENGE_DEFAULTS.eyesClosedMaxOpen } = this.options
     return (signal.leftEye + signal.rightEye) / 2 <= maxEyeOpen
   }
+
+  override metric(signal: FaceSignal): ChallengeMetric {
+    const { maxEyeOpen = CHALLENGE_DEFAULTS.eyesClosedMaxOpen } = this.options
+    return { value: (signal.leftEye + signal.rightEye) / 2, needed: maxEyeOpen, direction: 'below' }
+  }
+}
+
+/** Yaw change from the baseline, positive towards the requested side. */
+function turnDelta(signal: FaceSignal, baseline: FaceSignal | null, sign: 1 | -1, towards: 'left' | 'right'): number {
+  const delta = signal.yaw - (baseline?.yaw ?? 0)
+  return towards === 'left' ? -delta * sign : delta * sign
 }
 
 export class TurnLeftChallenge extends Challenge {
@@ -104,9 +149,14 @@ export class TurnLeftChallenge extends Challenge {
     super()
   }
 
-  isSatisfied(signal: FaceSignal): boolean {
-    const { minYaw = 18, yawSign = DEFAULT_YAW_SIGN } = this.options
-    return signal.yaw * yawSign <= -minYaw
+  isSatisfied(signal: FaceSignal, baseline: FaceSignal | null = null): boolean {
+    const { minYaw = CHALLENGE_DEFAULTS.turnMinYawDelta, yawSign = DEFAULT_YAW_SIGN } = this.options
+    return turnDelta(signal, baseline, yawSign, 'left') >= minYaw
+  }
+
+  override metric(signal: FaceSignal, baseline: FaceSignal | null = null): ChallengeMetric {
+    const { minYaw = CHALLENGE_DEFAULTS.turnMinYawDelta, yawSign = DEFAULT_YAW_SIGN } = this.options
+    return { value: turnDelta(signal, baseline, yawSign, 'left'), needed: minYaw, direction: 'above' }
   }
 }
 
@@ -117,9 +167,14 @@ export class TurnRightChallenge extends Challenge {
     super()
   }
 
-  isSatisfied(signal: FaceSignal): boolean {
-    const { minYaw = 18, yawSign = DEFAULT_YAW_SIGN } = this.options
-    return signal.yaw * yawSign >= minYaw
+  isSatisfied(signal: FaceSignal, baseline: FaceSignal | null = null): boolean {
+    const { minYaw = CHALLENGE_DEFAULTS.turnMinYawDelta, yawSign = DEFAULT_YAW_SIGN } = this.options
+    return turnDelta(signal, baseline, yawSign, 'right') >= minYaw
+  }
+
+  override metric(signal: FaceSignal, baseline: FaceSignal | null = null): ChallengeMetric {
+    const { minYaw = CHALLENGE_DEFAULTS.turnMinYawDelta, yawSign = DEFAULT_YAW_SIGN } = this.options
+    return { value: turnDelta(signal, baseline, yawSign, 'right'), needed: minYaw, direction: 'above' }
   }
 }
 
@@ -131,13 +186,18 @@ export class SmileChallenge extends Challenge {
   }
 
   isSatisfied(signal: FaceSignal): boolean {
-    const { minSmile = 0.7 } = this.options
+    const { minSmile = CHALLENGE_DEFAULTS.smileMin } = this.options
     return signal.smile >= minSmile
+  }
+
+  override metric(signal: FaceSignal): ChallengeMetric {
+    const { minSmile = CHALLENGE_DEFAULTS.smileMin } = this.options
+    return { value: signal.smile, needed: minSmile, direction: 'above' }
   }
 }
 
 /**
- * Open the mouth.
+ * Open the mouth — judged as a *rise* over the person's own resting mouth.
  *
  * The rigid-mask counter-measure: a 3-D-printed, resin or latex mask cannot
  * open its jaw, and a flexible silicone mask opens far less than the wearer's.
@@ -151,14 +211,22 @@ export class OpenMouthChallenge extends Challenge {
     super()
   }
 
-  isSatisfied(signal: FaceSignal): boolean {
-    const { minMouthOpen = 0.3 } = this.options
-    return signal.mouthOpen >= minMouthOpen
+  private needed(baseline: FaceSignal | null): number {
+    const { minDelta = CHALLENGE_DEFAULTS.mouthOpenMinDelta, minMouthOpen = CHALLENGE_DEFAULTS.mouthOpenMinAbsolute } = this.options
+    return baseline ? baseline.mouthOpen + minDelta : minMouthOpen
+  }
+
+  isSatisfied(signal: FaceSignal, baseline: FaceSignal | null = null): boolean {
+    return signal.mouthOpen >= this.needed(baseline)
+  }
+
+  override metric(signal: FaceSignal, baseline: FaceSignal | null = null): ChallengeMetric {
+    return { value: signal.mouthOpen, needed: this.needed(baseline), direction: 'above' }
   }
 }
 
 /**
- * Nod: pitch the head clearly down (or up).
+ * Nod: pitch the head clearly away from the resting pitch, either direction.
  *
  * Direction-free on purpose, like the turns: ML Kit's pitch sign differs
  * between devices, and what matters for liveness is that the head *moved*
@@ -171,9 +239,14 @@ export class NodChallenge extends Challenge {
     super()
   }
 
-  isSatisfied(signal: FaceSignal): boolean {
-    const { minPitch = 15 } = this.options
-    return Math.abs(signal.pitch) >= minPitch
+  isSatisfied(signal: FaceSignal, baseline: FaceSignal | null = null): boolean {
+    const { minPitch = CHALLENGE_DEFAULTS.nodMinPitchDelta } = this.options
+    return Math.abs(signal.pitch - (baseline?.pitch ?? 0)) >= minPitch
+  }
+
+  override metric(signal: FaceSignal, baseline: FaceSignal | null = null): ChallengeMetric {
+    const { minPitch = CHALLENGE_DEFAULTS.nodMinPitchDelta } = this.options
+    return { value: Math.abs(signal.pitch - (baseline?.pitch ?? 0)), needed: minPitch, direction: 'above' }
   }
 }
 
@@ -184,6 +257,29 @@ export type ChallengeTuning = {
   smile?: SmileOptions
   openMouth?: OpenMouthOptions
   nod?: NodOptions
+}
+
+/**
+ * The thresholds a server session carries (`SessionPolicy`), turned into
+ * challenge tuning: server rule + a margin, so what the phone confirms is what
+ * the server will accept. Anything the policy does not carry keeps the local
+ * default; explicit `tuning` from the host app wins over both.
+ */
+export function tuningFromPolicy(
+  policy: { turnYawMinDeg?: number; neutralYawMaxDeg?: number } | undefined,
+  tuning: ChallengeTuning = {},
+): ChallengeTuning {
+  if (!policy) return tuning
+  const out: ChallengeTuning = { ...tuning }
+  if (policy.turnYawMinDeg !== undefined) {
+    out.turn = { minYaw: policy.turnYawMinDeg + 3, ...tuning.turn }
+  }
+  if (policy.neutralYawMaxDeg !== undefined) {
+    // The centre gate should be at least as strict as the server's frontal
+    // rule, and never looser than the local default.
+    out.center = { maxYaw: Math.min(CHALLENGE_DEFAULTS.centerMaxYaw, policy.neutralYawMaxDeg), ...tuning.center }
+  }
+  return out
 }
 
 /**

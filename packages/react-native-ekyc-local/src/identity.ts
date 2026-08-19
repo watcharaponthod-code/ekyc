@@ -110,36 +110,53 @@ export function decodeJpeg(input: Uint8Array | string): DecodedImage {
 export type FrameEmbedding = { key: string; embedding: Float32Array }
 
 export type ConsistencyReport = {
-  /** Lowest similarity across all pairs — the number the verdict is made on. */
+  /** Lowest similarity across the compared pairs — the number the verdict is made on. */
   min: number
   /** Which pair was the worst. */
   weakest: [string, string] | null
-  /** Every pair, for the debug/result screen. */
+  /** Every compared pair, for the debug/result screen. */
   pairs: { a: string; b: string; similarity: number }[]
+  /** Which pairs were compared. */
+  topology: 'star' | 'all'
 }
 
 /**
- * Pairwise similarity across all captured frames. Like the server's swap
- * detector, it reports the *worst* pair, not the mean: one swapped frame must
- * not hide behind four good ones.
+ * Which pairs to compare.
+ *
+ * `star` (default): every frame against the neutral frame. That is the
+ * comparison that carries the security — a photo swapped in for one step, or
+ * a second person doing a turn, differs from the neutral face — and it avoids
+ * judging the hardest pair of all, turned-left vs turned-right (40°+ apart),
+ * which for an unaligned embedder scores low for the *same* person and adds
+ * nothing a neutral comparison does not already catch. `all` is the old
+ * every-pair rule, kept for measurement.
  */
-export function consistency(frames: FrameEmbedding[]): ConsistencyReport {
+export type Topology = 'star' | 'all'
+
+/**
+ * Similarity across the captured frames. Like the server's swap detector it
+ * reports the *worst* compared pair, not the mean: one swapped frame must not
+ * hide behind four good ones.
+ */
+export function consistency(frames: FrameEmbedding[], topology: Topology = 'star'): ConsistencyReport {
   const pairs: ConsistencyReport['pairs'] = []
   let min = 1
   let weakest: [string, string] | null = null
-  for (let i = 0; i < frames.length; i++) {
-    for (let j = i + 1; j < frames.length; j++) {
-      const a = frames[i]!
-      const b = frames[j]!
-      const similarity = cosine(a.embedding, b.embedding)
-      pairs.push({ a: a.key, b: b.key, similarity })
-      if (similarity < min) {
-        min = similarity
-        weakest = [a.key, b.key]
-      }
+  const neutral = frames.find((f) => f.key === 'neutral')
+  const compare = (a: FrameEmbedding, b: FrameEmbedding) => {
+    const similarity = cosine(a.embedding, b.embedding)
+    pairs.push({ a: a.key, b: b.key, similarity })
+    if (similarity < min) {
+      min = similarity
+      weakest = [a.key, b.key]
     }
   }
-  return { min: frames.length < 2 ? 1 : min, weakest, pairs }
+  if (topology === 'star' && neutral) {
+    for (const f of frames) if (f !== neutral) compare(neutral, f)
+  } else {
+    for (let i = 0; i < frames.length; i++) for (let j = i + 1; j < frames.length; j++) compare(frames[i]!, frames[j]!)
+  }
+  return { min: pairs.length === 0 ? 1 : min, weakest, pairs, topology: topology === 'star' && neutral ? 'star' : 'all' }
 }
 
 /**
@@ -168,11 +185,11 @@ export type LocalVerdict = {
 
 export function judge(
   frames: FrameEmbedding[],
-  options: { consistencyMin?: number; reference?: ArrayLike<number> | null; matchMin?: number } = {},
+  options: { consistencyMin?: number; reference?: ArrayLike<number> | null; matchMin?: number; topology?: Topology } = {},
 ): LocalVerdict {
   const consistencyMin = options.consistencyMin ?? DEFAULT_CONSISTENCY_MIN
   const matchMin = options.matchMin ?? DEFAULT_MATCH_MIN
-  const report = consistency(frames)
+  const report = consistency(frames, options.topology ?? 'star')
   const reasons: string[] = []
   if (frames.length === 0) reasons.push('NO_FRAMES')
   if (report.min < consistencyMin) reasons.push('IDENTITY_INCONSISTENT')

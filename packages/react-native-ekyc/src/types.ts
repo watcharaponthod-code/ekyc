@@ -71,6 +71,22 @@ export type FailureReason =
   | 'captureFailed'
   | 'cancelled'
 
+/**
+ * The best value a step reached, in that challenge's own unit (degrees of
+ * turn from neutral, mouth-gap rise, mean eye-open probability...), against
+ * what it needed. Keyed `"<stepIndex>:<challenge>"` in `LivenessState`.
+ * This is the tuning telemetry: a timeout that says "reached 14 of 25" is
+ * actionable; "timed out" is not.
+ */
+export type StepMetric = {
+  challenge: ChallengeName
+  best: number
+  needed: number
+  direction: 'above' | 'below'
+  /** Timestamp of the best frame. */
+  t: number
+}
+
 /** The UI is a pure function of this value. */
 export type LivenessState = {
   phase: LivenessPhase
@@ -81,6 +97,8 @@ export type LivenessState = {
   /** 0..1 — how much of the required hold has been accumulated. Drives the progress ring. */
   holdProgress: number
   framing: Framing
+  /** Best-so-far per step (see `StepMetric`). */
+  stepMetrics: Record<string, StepMetric>
   reason?: FailureReason
 }
 
@@ -90,7 +108,14 @@ export type SessionEvent =
   | { type: 'stepComplete'; challenge: ChallengeName; stepIndex: number }
   /** Every step captured; the evidence bundle is ready to upload. */
   | { type: 'complete' }
-  | { type: 'failed'; reason: FailureReason }
+  | {
+      type: 'failed'
+      reason: FailureReason
+      /** Which step it died on and how close each step got — for the log. */
+      stepIndex: number
+      challenge: ChallengeName | null
+      stepMetrics: Record<string, StepMetric>
+    }
 
 export type SessionOptions = {
   /** How long the pose must be held before the step counts (a challenge may override it). */
@@ -152,6 +177,13 @@ export type SessionPolicy = {
   holdMs: number
   perStepTimeoutMs: number
   totalTimeoutMs: number
+  /**
+   * The server's own pose thresholds, so the phone confirms a pose only once
+   * the server would accept it (see `tuningFromPolicy`). Absent on servers
+   * that predate them; the module then falls back to `CHALLENGE_DEFAULTS`.
+   */
+  turnYawMinDeg?: number
+  neutralYawMaxDeg?: number
 }
 
 export type CreatedSession = {

@@ -33,6 +33,7 @@ from .schemas import (
     MatchResult,
     PersonOut,
 )
+from .services import audit as audit_service
 from .services import persons as persons_service
 from .services import sessions as sessions_service
 from .services.sessions import SessionError
@@ -274,6 +275,14 @@ def client_log(entry: dict) -> None:
         "at": entry.get("at"),
     }
     log_event("client", **{k: str(v)[:500] for k, v in allowed.items() if v is not None})
+
+
+@app.get("/v1/audit", dependencies=[ApiKey])
+def audit(db: Annotated[Session, Depends(get_db)], limit: int = 100) -> dict:
+    """Recent decisions plus a tuning summary (pass rate, reason histogram,
+    per-gate score percentiles). No biometric data. Key-protected."""
+    rows = audit_service.recent(db, max(1, min(limit, 1000)))
+    return {"summary": audit_service.summarise(rows), "recent": rows}
 
 
 @app.get("/v1/persons", response_model=list[PersonOut], dependencies=[ApiKey])

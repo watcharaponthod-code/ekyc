@@ -12,7 +12,7 @@ import secrets
 
 from sqlalchemy.orm import Session
 
-from ..config import settings
+from ..config import settings, thresholds
 from ..decision import EXPRESSION_CHALLENGES, VERIFIABLE_CHALLENGES
 from ..flash import FLASH_PALETTE
 from ..models import VerificationSession
@@ -90,7 +90,10 @@ def create_session(
     if request.purpose == "verify" and not request.personId:
         raise SessionError("PERSON_REQUIRED")
 
-    policy = SessionPolicy()
+    policy = SessionPolicy(
+        turnYawMinDeg=thresholds.turn_yaw_min_deg,
+        neutralYawMaxDeg=thresholds.neutral_yaw_max_deg,
+    )
     record = VerificationSession(
         purpose=request.purpose,
         person_id=request.personId,

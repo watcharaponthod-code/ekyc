@@ -158,7 +158,7 @@ describe('LivenessSession — failures', () => {
     feedFor(session, { count: 0 }, 5000, 0)
     expect(session.state.phase).toBe('failed')
     expect(session.state.reason).toBe('faceLost')
-    expect(events.at(-1)).toEqual({ type: 'failed', reason: 'faceLost' })
+    expect(events.at(-1)).toMatchObject({ type: 'failed', reason: 'faceLost', stepIndex: 0, challenge: 'center' })
   })
 
   it('fails with its own reason when a second face lingers', () => {

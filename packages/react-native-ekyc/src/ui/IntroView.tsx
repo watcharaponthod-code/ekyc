@@ -8,6 +8,10 @@ export type IntroViewProps = {
   theme?: EKYCTheme
   onStart: () => void
   onCancel?: (() => void) | undefined
+  /** Override the numbered step lines (e.g. a flow without a blink step). */
+  steps?: string[] | undefined
+  /** Override the consent line (e.g. an on-device flow that sends nothing anywhere). */
+  consent?: string | undefined
 }
 
 /**
@@ -19,8 +23,9 @@ export type IntroViewProps = {
  * PDPA needs explicit consent, and "explicit" means before the camera starts,
  * not in a settings page.
  */
-export function IntroView({ locale = 'th', theme = defaultTheme, onStart, onCancel }: IntroViewProps) {
-  const t = strings(locale).intro
+export function IntroView({ locale = 'th', theme = defaultTheme, onStart, onCancel, steps, consent }: IntroViewProps) {
+  const base = strings(locale).intro
+  const t = { ...base, steps: steps ?? base.steps, consent: consent ?? base.consent }
   const common = strings(locale).result
 
   return (

@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native'
 import { File, Paths } from 'expo-file-system'
+import * as Sharing from 'expo-sharing'
 import { IntroView, defaultTheme, type EKYCTheme } from '@ekyc/react-native-ekyc'
 import {
   DEFAULT_CONSISTENCY_MIN,
@@ -24,7 +25,7 @@ import {
 } from '@ekyc/react-native-ekyc-local'
 
 /** Bumped per published APK so a phone can prove which build it runs. */
-const APP_BUILD = 3
+const APP_BUILD = 4
 
 /**
  * Light theme — deliberately the opposite of the server demo's dark one, so
@@ -48,6 +49,17 @@ const theme: EKYCTheme = {
   },
 }
 const TEMPLATE_FILE = new File(Paths.document, 'ekyc-local-template.json')
+/** One JSON line per session — numbers only, no images or embeddings. This is what tuning reads. */
+const LOG_FILE = new File(Paths.document, 'ekyc-local-sessions.jsonl')
+
+function appendLog(line: string): void {
+  try {
+    const previous = LOG_FILE.exists ? LOG_FILE.textSync() : ''
+    LOG_FILE.write(previous + line + '\n')
+  } catch {
+    /* logging must never break the flow */
+  }
+}
 
 type Mode = 'check' | 'enroll' | 'verify'
 type Screen = { kind: 'home' } | { kind: 'intro'; mode: Mode } | { kind: 'capture'; mode: Mode }
@@ -78,6 +90,7 @@ export default function App() {
   const handleResult = useCallback(
     (mode: Mode, result: LocalResult) => {
       setLast({ mode, result })
+      appendLog(JSON.stringify({ mode, ...result.report }))
       if (mode === 'enroll' && result.passed && result.embedding) {
         try {
           TEMPLATE_FILE.write(embeddingToJson(result.embedding))
@@ -95,6 +108,8 @@ export default function App() {
       <IntroView
         locale="th"
         theme={theme}
+        steps={['อยู่ในที่ที่มีแสงพอ และถอดแว่นกันแดด', 'จัดใบหน้าให้อยู่ในกรอบวงรี มองตรง', 'ทำตามคำสั่ง: หันซ้าย หันขวา อ้าปาก พยักหน้า แล้วอยู่นิ่ง 7 วินาที']}
+        consent="ประมวลผลบนเครื่องทั้งหมด ไม่มีการส่งภาพหรือข้อมูลใบหน้าออกจากโทรศัพท์"
         onStart={() => setScreen({ kind: 'capture', mode: screen.mode })}
         onCancel={() => setScreen({ kind: 'home' })}
       />
@@ -171,10 +186,52 @@ export default function App() {
                 `\n` +
                 last.result.consistency.pairs.map((p) => `  ${p.a} ↔ ${p.b}: ${p.similarity.toFixed(3)}`).join('\n') +
                 (last.result.match ? `\nmatch vs saved: ${last.result.match.score.toFixed(3)} (≥ ${DEFAULT_MATCH_MIN}) ${last.result.match.ok ? 'ok' : 'NO'}` : '') +
-                `\ncapture ${last.result.timings.captureMs} ms · embed ${last.result.timings.embedMs} ms · frames ${last.result.frames.length}`}
+                `\ncapture ${last.result.timings.captureMs} ms · embed ${last.result.timings.embedMs} ms · frames ${last.result.frames.length}` +
+                (Object.keys(last.result.report.stepMetrics).length
+                  ? `\nขั้นตอน (ทำได้ / ต้องการ):\n` +
+                    Object.values(last.result.report.stepMetrics)
+                      .map((m) => `  ${m.challenge}: ${m.best.toFixed(2)} ${m.direction === 'above' ? '≥' : '≤'} ${m.needed.toFixed(2)}`)
+                      .join('\n')
+                  : '')}
             </Text>
           </View>
         ) : null}
+
+        <Text style={styles.label}>บันทึกการทดสอบ (log)</Text>
+        <Text style={styles.body}>ทุกครั้งที่สแกน แอปจะบันทึกตัวเลขของรอบนั้น (ไม่มีรูป ไม่มีข้อมูลใบหน้า) ส่งไฟล์นี้มาเพื่อปรับเกณฑ์ให้ตรงกับเครื่องจริง</Text>
+        <Button
+          label="แชร์ log การทดสอบ"
+          variant="ghost"
+          onPress={() => {
+            void (async () => {
+              try {
+                if (!LOG_FILE.exists) {
+                  Alert.alert('ยังไม่มี log', 'สแกนสักครั้งก่อน')
+                  return
+                }
+                if (!(await Sharing.isAvailableAsync())) {
+                  Alert.alert('แชร์ไม่ได้บนเครื่องนี้', LOG_FILE.uri)
+                  return
+                }
+                await Sharing.shareAsync(LOG_FILE.uri, { mimeType: 'application/json', dialogTitle: 'eKYC Local session log' })
+              } catch (e) {
+                Alert.alert('แชร์ไม่สำเร็จ', (e as Error).message)
+              }
+            })()
+          }}
+        />
+        <Button
+          label="ล้าง log"
+          variant="ghost"
+          onPress={() => {
+            try {
+              if (LOG_FILE.exists) LOG_FILE.delete()
+            } catch {
+              /* already gone */
+            }
+            Alert.alert('ล้างแล้ว', 'log ถูกลบแล้ว')
+          }}
+        />
 
         <Text style={styles.footnote}>
           ตัวนี้พิสูจน์ว่า “คนที่ทำท่าทั้งหมดเป็นคนเดียวกัน” (และถ้าเลือก verify ตรงกับที่บันทึกไว้) · หน้ากากแข็งอ้าปากไม่ได้จึงไม่ผ่านขั้นอ้าปาก · ชีพจร rPPG จับหน้ากากซิลิโคน (ยังเป็น advisory จนกว่าจะวัดบนมือถือจริง) · ยังไม่มีการตรวจภาพถ่าย/จอบนเครื่อง

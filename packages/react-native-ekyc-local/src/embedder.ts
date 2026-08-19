@@ -19,7 +19,7 @@ import { loadTensorflowModel, type TensorflowModel } from 'react-native-fast-tfl
 
 import type { Rect } from '@ekyc/react-native-ekyc'
 
-import { EMBEDDING_DIM, EMBEDDING_INPUT, decodeJpeg, l2normalize, preprocessRgba } from './identity'
+import { EMBEDDING_INPUT, decodeJpeg, l2normalize, preprocessRgba } from './identity'
 import { FACE_THUMB } from './skin'
 
 /** How much of the ML Kit box to grow the crop by on each side. ArcFace-style
@@ -82,18 +82,28 @@ export class FaceEmbedder {
     return this.model?.inputs[0]?.shape ?? null
   }
 
-  /** Embed the face in a snapshot. Throws on a bad crop; callers decide what that means. */
-  async embed(crop: FaceCrop): Promise<Float32Array> {
+  /**
+   * Embed the face in a snapshot. Throws on a bad crop; callers decide what
+   * that means.
+   *
+   * With `tta` (default) the crop and its mirror image are both embedded and
+   * the two vectors averaged — flip test-time augmentation, the standard
+   * cheap trick for face embedders: it cancels part of the left/right
+   * asymmetry a turned head introduces, which is exactly the variation this
+   * flow has to tolerate. Cost: one extra 112×112 inference (~20 ms).
+   */
+  async embed(crop: FaceCrop, tta: boolean = true): Promise<Float32Array> {
     const model = await this.load()
-    const tensor = await this.prepare(crop)
-    const outputs = await model.run([tensor.buffer as ArrayBuffer])
-    const raw = new Float32Array(outputs[0]!)
-    if (raw.length !== EMBEDDING_DIM) {
-      // A different MobileFaceNet export could be 128- or 512-d; still fine,
-      // just normalise whatever came out.
-      return l2normalize(raw)
-    }
-    return l2normalize(raw)
+    const decoded = await cropFace(crop)
+    const tensor = preprocessRgba(decoded.rgba, decoded.width, decoded.height)
+    const first = new Float32Array((await model.run([tensor.buffer as ArrayBuffer]))[0]!)
+    if (!tta) return l2normalize(first)
+    const flipped = preprocessRgba(flipHorizontal(decoded.rgba, decoded.width, decoded.height), decoded.width, decoded.height)
+    const second = new Float32Array((await model.run([flipped.buffer as ArrayBuffer]))[0]!)
+    const n = Math.min(first.length, second.length)
+    const sum = new Float32Array(n)
+    for (let i = 0; i < n; i++) sum[i] = first[i]! + second[i]!
+    return l2normalize(sum)
   }
 
   /** The 112x112 RGB float tensor for a crop — separated so it can be inspected in debug builds. */
@@ -155,6 +165,23 @@ export async function cropFace(crop: FaceCrop): Promise<{ width: number; height:
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v))
+}
+
+/** Mirror an RGBA buffer left↔right. Pure; tested. */
+export function flipHorizontal(rgba: Uint8Array, width: number, height: number): Uint8Array {
+  const out = new Uint8Array(rgba.length)
+  for (let y = 0; y < height; y++) {
+    const row = y * width * 4
+    for (let x = 0; x < width; x++) {
+      const src = row + x * 4
+      const dst = row + (width - 1 - x) * 4
+      out[dst] = rgba[src]!
+      out[dst + 1] = rgba[src + 1]!
+      out[dst + 2] = rgba[src + 2]!
+      out[dst + 3] = rgba[src + 3]!
+    }
+  }
+  return out
 }
 
 /**

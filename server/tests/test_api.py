@@ -288,14 +288,33 @@ class TestActiveFlashApi:
         assert "FLASH_SPOOF" not in body["reasons"], body
         assert body["scores"]["flash"] > 0.5, body
 
-    def test_a_photo_held_under_the_flash_is_rejected(self, client, jpeg_bytes, monkeypatch):
+    def test_a_photo_held_under_the_flash_is_rejected_when_enforced(self, client, jpeg_bytes, monkeypatch):
+        import app.main as main_module
+        from app.config import Thresholds
         from app.config import settings as cfg
 
         monkeypatch.setattr(cfg, "flash_frames", 4)
+        monkeypatch.setattr(main_module, "thresholds", Thresholds(flash_rule="enforce"))
         session = make_session(client)
         response = _submit_with_flash(client, session, jpeg_bytes, real=False)
         assert response.json()["decision"] == "fail"
         assert "FLASH_SPOOF" in response.json()["reasons"], response.json()
+
+    def test_a_photo_under_the_flash_is_only_recorded_by_default(self, client, jpeg_bytes, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "flash_frames", 4)
+        session = make_session(client)
+        body = _submit_with_flash(client, session, jpeg_bytes, real=False).json()
+        assert "FLASH_SPOOF" not in body["reasons"]
+        assert body["scores"]["flash"] < 0.5 and body["scores"]["flashRule"] == "advisory"
+
+    def test_the_policy_carries_the_server_pose_thresholds(self, client):
+        from app.config import thresholds as th
+
+        policy = make_session(client)["policy"]
+        assert policy["turnYawMinDeg"] == th.turn_yaw_min_deg
+        assert policy["neutralYawMaxDeg"] == th.neutral_yaw_max_deg
 
 
 # --- expression challenges, pulse burst, API key, retention -----------------
@@ -491,3 +510,23 @@ class TestRetention:
         submit(client, session, jpeg_bytes)
         assert not (tmp_path / "evil label").exists()
         assert any((tmp_path / "kept").iterdir())
+
+
+class TestAuditView:
+    def test_it_summarises_recent_decisions(self, client, jpeg_bytes):
+        for _ in range(3):
+            submit(client, make_session(client), jpeg_bytes)
+        body = client.get("/v1/audit?limit=10").json()
+        assert body["summary"]["sessions"] == 3
+        assert body["summary"]["passRate"] == 0.0  # the fake backend never turns its head
+        assert "POSE_INSUFFICIENT_TURN" in body["summary"]["reasons"] or "MOUTH_NOT_OPEN" in body["summary"]["reasons"]
+        assert body["summary"]["scores"]["pad"]["n"] == 3
+        assert len(body["recent"]) == 3
+        assert set(body["recent"][0]) == {"at", "sessionId", "personId", "decision", "reasons", "scores"}
+
+    def test_it_is_key_protected(self, client, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "api_keys", "k")
+        assert client.get("/v1/audit").status_code == 401
+        assert client.get("/v1/audit", headers={"X-API-Key": "k"}).status_code == 200

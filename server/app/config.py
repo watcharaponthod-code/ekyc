@@ -79,6 +79,12 @@ class Thresholds(BaseSettings):
     #: photo/replay ~0.15-0.23; see test_flash.py), so 0.5 sits in the empty
     #: gap. Only enforced when a session issued a flash plan.
     flash_min: float = 0.5
+    #: `advisory` records the flash score without failing on it; `enforce`
+    #: adds FLASH_SPOOF below `flash_min`. Advisory by default because the
+    #: threshold was set on synthetic reflectance only (test_flash.py) and no
+    #: phone has been measured yet — the same rule as `pulse_rule`. Flip to
+    #: enforce once `scripts/audit_report.py` shows real sessions clear it.
+    flash_rule: str = Field(default="advisory", pattern="^(advisory|enforce)$")
 
     #: `enforce` makes the closed-eyes check a hard rule; `advisory` measures
     #: and logs it without failing on it alone. Enforced by default now that

@@ -105,14 +105,16 @@ describe('consistency + judge', () => {
   const bob = l2normalize(vec(0, 0.1, 1, 0.2))
 
   it('reports the worst pair, not the mean', () => {
-    const report = consistency([
+    const frames = [
       { key: 'neutral', embedding: alice },
       { key: 'turnLeft', embedding: aliceTurned },
       { key: 'openMouth', embedding: bob },
-    ])
+    ]
+    const report = consistency(frames) // star: 2 pairs, both against neutral
     expect(report.min).toBeLessThan(0.3)
     expect(report.weakest).toEqual(['neutral', 'openMouth'])
-    expect(report.pairs).toHaveLength(3)
+    expect(report.pairs).toHaveLength(2)
+    expect(consistency(frames, 'all').pairs).toHaveLength(3)
   })
 
   it('one person across poses passes; a swapped frame fails', () => {
@@ -146,5 +148,36 @@ describe('consistency + judge', () => {
     const back = embeddingFromJson(json)
     expect(cosine(back, alice)).toBeCloseTo(1, 5)
     expect(() => embeddingFromJson('{"no":1}')).toThrow()
+  })
+})
+
+describe('star topology', () => {
+  const neutral = l2normalize(vec(1, 0.1, 0.05, 0))
+  const left = l2normalize(vec(0.8, 0.5, 0.1, 0.05))
+  const right = l2normalize(vec(0.8, -0.5, 0.1, 0.05))
+  const frames = [
+    { key: 'neutral', embedding: neutral },
+    { key: 'turnLeft', embedding: left },
+    { key: 'turnRight', embedding: right },
+  ]
+  it('compares every frame to neutral only, never left vs right', () => {
+    const star = consistency(frames, 'star')
+    expect(star.topology).toBe('star')
+    expect(star.pairs.map((p) => `${p.a}-${p.b}`).sort()).toEqual(['neutral-turnLeft', 'neutral-turnRight'])
+    const all = consistency(frames, 'all')
+    expect(all.pairs).toHaveLength(3)
+    // the left–right pair is the hardest one and only "all" pays for it
+    expect(all.min).toBeLessThan(star.min)
+  })
+  it('falls back to all pairs when there is no neutral frame', () => {
+    const r = consistency(frames.slice(1), 'star')
+    expect(r.topology).toBe('all')
+    expect(r.pairs).toHaveLength(1)
+  })
+  it('a swapped turned frame is still caught against neutral', () => {
+    const bob = l2normalize(vec(0, 0.1, 1, 0.2))
+    const r = judge([{ key: 'neutral', embedding: neutral }, { key: 'turnLeft', embedding: left }, { key: 'turnRight', embedding: bob }])
+    expect(r.passed).toBe(false)
+    expect(r.consistency.weakest).toEqual(['neutral', 'turnRight'])
   })
 })

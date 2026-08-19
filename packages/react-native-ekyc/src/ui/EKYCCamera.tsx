@@ -23,7 +23,7 @@ import {
 import type { EKYCClient } from '../client/EKYCClient'
 import { LivenessSession } from '../liveness/LivenessSession'
 import { mouthOpenness } from '../liveness/mouth'
-import { buildChallenges, type ChallengeTuning } from '../liveness/challenges'
+import { buildChallenges, tuningFromPolicy, type ChallengeTuning } from '../liveness/challenges'
 import {
   DEFAULT_SESSION_OPTIONS,
   type Attestation,
@@ -396,7 +396,9 @@ export function EKYCCamera({
       )
       log('permission', String(hasPermission))
 
-      const challenges = buildChallenges(created.challenges as ChallengeName[], tuning)
+      // Server thresholds + margin drive the client predicates, so the phone
+      // never confirms a pose the server will then reject.
+      const challenges = buildChallenges(created.challenges as ChallengeName[], tuningFromPolicy(created.policy, tuning))
       const now = Date.now()
       startedAt.current = now
       stepStartedAt.current = now
@@ -428,6 +430,8 @@ export function EKYCCamera({
       }
       if (event.type === 'stepComplete') {
         hapticStep()
+        const metric = session.current?.state.stepMetrics[`${event.stepIndex}:${event.challenge}`]
+        if (metric) log('step', `${event.challenge} best ${metric.best.toFixed(2)} needed ${metric.needed.toFixed(2)}`)
         const signal = latest.current
         observations.current.push({
           name: event.challenge,
@@ -450,7 +454,13 @@ export function EKYCCamera({
         void runPulse()
         return
       }
-      log('liveness failed', event.reason)
+      log(
+        'liveness failed',
+        `${event.reason} at step ${event.stepIndex} (${event.challenge ?? '-'}) ` +
+          Object.values(event.stepMetrics)
+            .map((m) => `${m.challenge}:${m.best.toFixed(2)}/${m.needed.toFixed(2)}`)
+            .join(' '),
+      )
       hapticFailure()
       setScreen({ kind: 'result', passed: false, reasons: [`LOCAL_${event.reason}`] })
     },
@@ -798,6 +808,7 @@ const idleState: LivenessState = {
   challenge: null,
   holdProgress: 0,
   framing: 'noFace',
+  stepMetrics: {},
 }
 
 const styles = StyleSheet.create({
