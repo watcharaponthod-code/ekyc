@@ -7,13 +7,15 @@ the judgement lives in `decision.py` and the `services` package.
 from __future__ import annotations
 
 import json
+import os
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session
 
 from .config import settings, thresholds
@@ -34,6 +36,7 @@ from .schemas import (
     PersonOut,
 )
 from .services import audit as audit_service
+from .services import evidence as evidence_service
 from .services import persons as persons_service
 from .services import sessions as sessions_service
 from .services.sessions import SessionError
@@ -50,6 +53,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     if warm_up is not None:
         with timed("backend.warm_up", backend=backend.name):
             warm_up()
+    # The onnx backend's eye-openness is an image-statistics proxy, not a
+    # measured EAR (docs/ml-validation.md §5): its closed-eyes rule must stay
+    # advisory unless someone has calibrated it and said so explicitly. Seen
+    # in the field: every Railway (onnx) session failed EYES_NOT_CLOSED.
+    if settings.backend == "onnx" and thresholds.eye_rule == "enforce" and "EKYC_EYE_RULE" not in os.environ:
+        thresholds.eye_rule = "advisory"
+        log_event("thresholds.adjusted", rule="eye_rule", value="advisory", reason="onnx backend has no calibrated EAR")
     yield
 
 
@@ -283,6 +293,49 @@ def audit(db: Annotated[Session, Depends(get_db)], limit: int = 100) -> dict:
     per-gate score percentiles). No biometric data. Key-protected."""
     rows = audit_service.recent(db, max(1, min(limit, 1000)))
     return {"summary": audit_service.summarise(rows), "recent": rows}
+
+
+def _key_ok_from_query(key: str | None) -> None:
+    """Browser-friendly auth for images and the gallery: `?key=` instead of a header."""
+    keys = settings.api_key_set()
+    if not keys:
+        return
+    if key is None or not any(secrets.compare_digest(key, k) for k in keys):
+        raise HTTPException(status_code=401, detail="API_KEY_REQUIRED")
+
+
+@app.get("/v1/audit/gallery", response_class=HTMLResponse)
+def evidence_gallery(key: str | None = Query(default=None), limit: int = 30) -> HTMLResponse:
+    """The retained evidence, newest first, as one HTML page of thumbnails
+    (evaluation deployments only — needs `EKYC_RETAIN_FRAMES`)."""
+    _key_ok_from_query(key)
+    sessions = evidence_service.list_sessions(settings.frames_dir, max(1, min(limit, 200)))
+    return HTMLResponse(evidence_service.gallery_html(sessions, f"?key={key}" if key else ""))
+
+
+@app.get("/v1/audit/{session_id}/frames", dependencies=[ApiKey])
+def evidence_frames(session_id: str) -> dict:
+    """What a retained session holds: decision, scores and the frame keys."""
+    session_dir = evidence_service.find_session_dir(settings.frames_dir, session_id)
+    if session_dir is None:
+        raise HTTPException(status_code=404, detail="EVIDENCE_NOT_FOUND")
+    return evidence_service.describe(session_dir)
+
+
+@app.get("/v1/audit/{session_id}/frames/{key}.jpg")
+def evidence_frame(session_id: str, key: str, api_key: str | None = Query(default=None, alias="key"),
+                   x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None) -> FileResponse:
+    """One retained frame as JPEG. Accepts the API key as `?key=` so an <img>
+    tag or a browser can fetch it."""
+    if x_api_key is not None:
+        require_api_key(x_api_key=x_api_key, authorization=None)
+    else:
+        _key_ok_from_query(api_key)
+    session_dir = evidence_service.find_session_dir(settings.frames_dir, session_id)
+    path = evidence_service.frame_path(session_dir, key) if session_dir else None
+    if path is None:
+        raise HTTPException(status_code=404, detail="FRAME_NOT_FOUND")
+    return FileResponse(str(path), media_type="image/jpeg")
 
 
 @app.get("/v1/persons", response_model=list[PersonOut], dependencies=[ApiKey])

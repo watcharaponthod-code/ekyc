@@ -530,3 +530,36 @@ class TestAuditView:
         monkeypatch.setattr(cfg, "api_keys", "k")
         assert client.get("/v1/audit").status_code == 401
         assert client.get("/v1/audit", headers={"X-API-Key": "k"}).status_code == 200
+
+
+class TestEvidenceViews:
+    def test_frames_and_gallery_come_from_retention(self, client, jpeg_bytes, tmp_path, monkeypatch):
+        from app.config import settings as cfg
+
+        monkeypatch.setattr(cfg, "frames_dir", tmp_path / "kept")
+        monkeypatch.setattr(cfg, "retain_frames", "all")
+        monkeypatch.setattr(cfg, "api_keys", "k1")
+        h = {"X-API-Key": "k1"}
+        session = client.post("/v1/sessions", json={"purpose": "enroll", "label": "bona_fide"}, headers=h).json()
+        keys = ["neutral", *session["challenges"]]
+        files = [("frames", (f"{k}.jpg", jpeg_bytes(seed=i), "image/jpeg")) for i, k in enumerate(keys)]
+        client.post(f"/v1/sessions/{session['sessionId']}/submit", data={"manifest": json.dumps(manifest_for(session))}, files=files, headers=h)
+
+        listing = client.get(f"/v1/audit/{session['sessionId']}/frames", headers=h)
+        assert listing.status_code == 200
+        body = listing.json()
+        assert body["label"] == "bona_fide" and body["frames"][0] == "neutral" and set(keys) <= set(body["frames"])
+
+        # header auth and ?key= auth both serve the JPEG; no key is refused
+        assert client.get(f"/v1/audit/{session['sessionId']}/frames/neutral.jpg", headers=h).headers["content-type"] == "image/jpeg"
+        assert client.get(f"/v1/audit/{session['sessionId']}/frames/neutral.jpg?key=k1").status_code == 200
+        assert client.get(f"/v1/audit/{session['sessionId']}/frames/neutral.jpg").status_code == 401
+        assert client.get(f"/v1/audit/{session['sessionId']}/frames/nope.jpg?key=k1").status_code == 404
+
+        gallery = client.get("/v1/audit/gallery?key=k1")
+        assert gallery.status_code == 200 and "text/html" in gallery.headers["content-type"]
+        assert session["sessionId"] in gallery.text and "neutral.jpg?key=k1" in gallery.text
+        assert client.get("/v1/audit/gallery").status_code == 401
+
+    def test_unknown_session_is_404(self, client):
+        assert client.get("/v1/audit/s_nope/frames").status_code == 404
