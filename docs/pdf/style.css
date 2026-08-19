@@ -48,7 +48,8 @@ table.data tr { page-break-inside: avoid; }
 /* figures */
 figure { margin: 8pt 0 12pt; page-break-inside: avoid; text-align: center; }
 figure img { max-width: 100%; height: auto; border: 1px solid var(--light); }
-figure.shots { display: flex; gap: 8pt; justify-content: center; }
+figure.shots { display: flex; flex-wrap: wrap; gap: 8pt; justify-content: center; }
+figure.shots figcaption { flex-basis: 100%; }
 figure.shots img { width: 31%; border: 1px solid var(--rule); border-radius: 6pt; }
 figcaption { font-size: 14pt; color: var(--muted); margin-top: 4pt; text-align: center; }
 figure.diagram svg { max-width: 100%; height: auto; }
