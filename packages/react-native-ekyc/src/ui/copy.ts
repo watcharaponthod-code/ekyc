@@ -28,6 +28,8 @@ type Strings = {
   flashHold: string
   /** "It's you: <name>" line on the success screen. */
   recognisedAs: (name: string) => string
+  /** Shown in the centre step after the phone measured its own frame as blurred. */
+  holdStill: string
   pulseHold: string
   intro: { title: string; body: string; steps: string[]; start: string; consent: string }
   result: {
@@ -76,6 +78,7 @@ const th: Strings = {
   uploading: 'กำลังตรวจสอบ…',
   flashHold: 'มองที่หน้าจอ ค้างไว้สักครู่',
   recognisedAs: (name) => `ยืนยันแล้วว่าเป็น: ${name}`,
+  holdStill: 'ภาพเบลอ — ถือเครื่องนิ่ง ๆ มองตรง',
   pulseHold: 'อยู่นิ่งๆ มองกล้อง สักครู่',
   intro: {
     title: 'ยืนยันว่าเป็นคุณ',
@@ -175,6 +178,7 @@ const en: Strings = {
   uploading: 'Checking…',
   flashHold: 'Look at the screen, hold still',
   recognisedAs: (name) => `Recognised as: ${name}`,
+  holdStill: 'Blurred — hold the phone still, look straight',
   pulseHold: 'Hold still and look at the camera',
   intro: {
     title: "Let's check it's you",

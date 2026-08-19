@@ -19,6 +19,7 @@
  */
 
 export { EKYCClient, asFileUri, buildEvidenceParts } from './client/EKYCClient'
+export { faceSharpness, laplacianVariance, SHARPNESS_MARGIN } from './quality/sharpness'
 export type {
   CreateSessionRequest,
   EKYCClientOptions,

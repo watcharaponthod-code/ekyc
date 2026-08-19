@@ -93,6 +93,7 @@ def create_session(
     policy = SessionPolicy(
         turnYawMinDeg=thresholds.turn_yaw_min_deg,
         neutralYawMaxDeg=thresholds.neutral_yaw_max_deg,
+        sharpnessMin=thresholds.sharpness_min,
     )
     record = VerificationSession(
         purpose=request.purpose,

@@ -8,6 +8,7 @@
     "@mediapipe/tasks-vision": "^1.0.1",
     "expo": "~57.0.13",
     "expo-haptics": "~57.0.1",
+    "expo-image-manipulator": "~57.0.10",
     "expo-secure-store": "~57.0.1",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",

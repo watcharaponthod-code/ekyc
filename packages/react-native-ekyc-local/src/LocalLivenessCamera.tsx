@@ -491,6 +491,7 @@ const idleState: LivenessState = {
   stepPhase: 0,
   phaseCount: 1,
   awaitingRecenter: false,
+  retakes: 0,
 }
 
 const styles = StyleSheet.create({

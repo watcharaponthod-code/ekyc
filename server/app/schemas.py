@@ -62,6 +62,8 @@ class CreateSessionRequest(BaseModel):
 
 class SessionPolicy(BaseModel):
     holdMs: int = 400
+    #: Minimum Laplacian variance on the neutral face; the phone retakes below it.
+    sharpnessMin: float | None = None
     perStepTimeoutMs: int = 12_000
     totalTimeoutMs: int = 60_000
     #: The server's own pose thresholds, echoed to the phone so its predicates

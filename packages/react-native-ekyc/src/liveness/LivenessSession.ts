@@ -38,6 +38,13 @@ export class LivenessSession {
   private lastT = 0
   private heldMs = 0
   private capturedThisRun = false
+  /**
+   * The neutral frame's evidence is being checked by the camera (sharpness).
+   * While pending the centre step keeps holding; `acceptEvidence` lets it
+   * complete, `rejectEvidence` retakes on the next confirming frames.
+   */
+  private evidencePending = false
+  private retakes = 0
   private badFramingSince: number | null = null
   private badFramingKind: Framing | null = null
   /** The signal at the moment `center` completed — every later challenge is judged relative to it. */
@@ -72,6 +79,7 @@ export class LivenessSession {
       stepPhase: this.stepPhase,
       phaseCount: challenge?.phaseCount ?? 1,
       awaitingRecenter: this.awaitingRecenter,
+      retakes: this.retakes,
       ...(this.reason ? { reason: this.reason } : {}),
     }
   }
@@ -97,6 +105,32 @@ export class LivenessSession {
     this.stepPhase = 0
     this.memo = {}
     this.awaitingRecenter = false
+    this.evidencePending = false
+    this.retakes = 0
+    return this.state
+  }
+
+  /**
+   * The camera checked the frame it took for the current step and it is
+   * usable. No-op unless a check was pending.
+   */
+  acceptEvidence(): LivenessState {
+    this.evidencePending = false
+    return this.state
+  }
+
+  /**
+   * The frame is not usable (blurred): drop it and take another one on the
+   * next confirming frames of the same hold. After `maxRetakes` the step is
+   * let through anyway — the server still judges; the phone never traps
+   * someone in the centre step.
+   */
+  rejectEvidence(): LivenessState {
+    this.evidencePending = false
+    this.retakes += 1
+    if (this.retakes >= this.options.maxRetakes) return this.state
+    this.capturedThisRun = false
+    this.heldMs = 0
     return this.state
   }
 
@@ -160,9 +194,14 @@ export class LivenessSession {
       const progress = hold > 0 ? this.heldMs / hold : 1
       if (!this.capturedThisRun && progress >= this.options.captureAtProgress) {
         this.capturedThisRun = true
+        // Only the neutral frame is quality-gated (it is what the server
+        // measures quality on), and only while retakes remain.
+        this.evidencePending = this.stepIndex === 0 && this.options.verifyNeutral && this.retakes < this.options.maxRetakes
         this.onEvent({ type: 'capture', challenge: challenge.name, stepIndex: this.stepIndex })
       }
       if (this.heldMs < hold) return this.state
+      // Keep holding until the camera has vetted the neutral frame.
+      if (this.evidencePending) return this.state
       // The centre step's last confirming frame becomes the baseline every
       // later challenge is measured against.
       if (this.stepIndex === 0) this.baseline = signal
@@ -267,7 +306,9 @@ export class LivenessSession {
 
   private resetHold(): void {
     this.heldMs = 0
-    this.capturedThisRun = false
+    // A frame under review stays the frame: a second capture while the first
+    // is being checked would race. The verdict (accept/reject) re-arms capture.
+    if (!this.evidencePending) this.capturedThisRun = false
   }
 
   /** Returns true once the bad framing has lasted longer than the grace period. */

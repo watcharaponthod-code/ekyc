@@ -22,7 +22,8 @@
     "react-native-nitro-modules": ">=0.35.0",
     "react-native-svg": ">=15.0.0",
     "react-native-vision-camera": ">=5.0.0",
-    "react-native-vision-camera-face-detector": ">=2.0.0"
+    "react-native-vision-camera-face-detector": ">=2.0.0",
+    "expo-image-manipulator": "*"
   },
   "peerDependenciesMeta": {
     "expo-haptics": {
@@ -46,5 +47,8 @@
     },
     "./src/*": "./src/*",
     "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "jpeg-js": "^0.4.4"
   }
 }

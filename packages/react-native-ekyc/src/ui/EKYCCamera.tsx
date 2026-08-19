@@ -23,6 +23,7 @@ import {
 import type { EKYCClient } from '../client/EKYCClient'
 import { LivenessSession } from '../liveness/LivenessSession'
 import { mouthOpenness } from '../liveness/mouth'
+import { faceSharpness, SHARPNESS_MARGIN } from '../quality/sharpness'
 import { buildChallenges, tuningFromPolicy, type ChallengeTuning } from '../liveness/challenges'
 import {
   DEFAULT_SESSION_OPTIONS,
@@ -264,9 +265,42 @@ export function EKYCCamera({
     }
   }, [])
 
+  // The neutral frame is the one the server measures quality on, and the
+  // one most often blurred (first shot, phone still settling). Measure it
+  // here with the server's own metric and threshold; a blurred one is dropped
+  // and retaken within the same hold, so the round never fails ten seconds
+  // later with QUALITY_SHARPNESS.
+  const vetNeutral = useCallback(async () => {
+    const current = session.current
+    const box = latest.current?.box
+    const path = frames.current.get('neutral')
+    if (!current || !box || !path) {
+      current?.acceptEvidence()
+      return
+    }
+    const min = (remote.current?.policy.sharpnessMin ?? 60) * SHARPNESS_MARGIN
+    try {
+      const t0 = Date.now()
+      const value = await faceSharpness(path, box)
+      log('sharpness', `neutral ${value.toFixed(1)} need ${min.toFixed(1)} ${Date.now() - t0}ms`)
+      if (value >= min) {
+        setState(current.acceptEvidence())
+      } else {
+        frames.current.delete('neutral')
+        setState(current.rejectEvidence())
+      }
+    } catch (error) {
+      // Cannot measure here → let the server measure. Never block on this.
+      log('sharpness failed', (error as Error).message)
+      setState(current.acceptEvidence())
+    }
+  }, [])
+
   const capture = useCallback((key: string) => {
-    pendingCaptures.current.push(snapshot(key))
-  }, [snapshot])
+    const shot = snapshot(key)
+    pendingCaptures.current.push(shot)
+    if (key === 'neutral') void shot.then(vetNeutral)
+  }, [snapshot, vetNeutral])
 
   // ---- upload ------------------------------------------------------------
 
@@ -415,6 +449,8 @@ export function EKYCCamera({
           holdMs: created.policy.holdMs || DEFAULT_SESSION_OPTIONS.holdMs,
           perStepTimeoutMs: created.policy.perStepTimeoutMs,
           totalTimeoutMs: created.policy.totalTimeoutMs,
+          // The server rejects a blurred neutral frame; vet it here and retake.
+          verifyNeutral: true,
         },
         (event) => handleEventRef.current(event),
       )
@@ -612,7 +648,9 @@ export function EKYCCamera({
       ? t.pulseHold
       : state.phase === 'uploading'
         ? t.uploading
-        : instructionFor(locale, state.framing, state.awaitingRecenter ? 'center' : state.challenge, holding, state.awaitingRecenter ? 0 : state.stepPhase)
+        : state.stepIndex === 0 && state.retakes > 0 && state.framing === 'ok'
+          ? t.holdStill
+          : instructionFor(locale, state.framing, state.awaitingRecenter ? 'center' : state.challenge, holding, state.awaitingRecenter ? 0 : state.stepPhase)
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
@@ -818,6 +856,7 @@ const idleState: LivenessState = {
   stepPhase: 0,
   phaseCount: 1,
   awaitingRecenter: false,
+  retakes: 0,
 }
 
 const styles = StyleSheet.create({

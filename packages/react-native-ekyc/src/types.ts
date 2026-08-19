@@ -115,6 +115,8 @@ export type LivenessState = {
   phaseCount: number
   /** True while the step waits for the head to come back to the neutral pose. */
   awaitingRecenter: boolean
+  /** Neutral frames retaken because the phone measured them as blurred. */
+  retakes: number
   reason?: FailureReason
 }
 
@@ -138,6 +140,13 @@ export type SessionOptions = {
   holdMs: number
   /** Fraction of the hold at which the photo is taken. 0 = the first confirming frame. */
   captureAtProgress: number
+  /**
+   * Let the camera vet the neutral frame (sharpness) before the centre step
+   * completes; a rejected frame is retaken within the same hold.
+   */
+  verifyNeutral: boolean
+  /** Give up retaking after this many rejections and let the server judge. */
+  maxRetakes: number
   /**
    * A step cannot complete sooner than this after it starts. Mirrors the
    * server's `step_duration_min_ms`, which rejects faster steps as implausible;
@@ -177,6 +186,8 @@ export const DEFAULT_SESSION_OPTIONS: SessionOptions = {
   // the hold the head is well past both. Snapshot capture has no shutter lag,
   // so mid-hold is still mid-hold in the frame.
   captureAtProgress: 0.5,
+  verifyNeutral: false,
+  maxRetakes: 3,
   minStepMs: 250,
   perStepTimeoutMs: 12_000,
   totalTimeoutMs: 60_000,
@@ -211,6 +222,8 @@ export type SessionPolicy = {
    */
   turnYawMinDeg?: number
   neutralYawMaxDeg?: number
+  /** Server's minimum Laplacian variance on the neutral face; the phone retakes below it. */
+  sharpnessMin?: number
 }
 
 export type CreatedSession = {
