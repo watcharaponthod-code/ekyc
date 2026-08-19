@@ -30,11 +30,17 @@ import {
   type SessionEvent,
 } from '@ekyc/react-native-ekyc'
 
-import { FaceEmbedder } from './embedder'
+import { FaceEmbedder, faceThumbnail } from './embedder'
 import { judge, type FrameEmbedding, type LocalVerdict } from './identity'
 import { pickLocalChallenges } from './challenges'
+import { DEFAULT_PULSE_MIN, pulseLivenessScore, type PulseResult, type Rgb } from './pulse'
+import { DEFAULT_PATCHES, FACE_THUMB, samplePatches, stableFaceBox } from './skin'
+
+export type PulseRule = 'off' | 'advisory' | 'enforce'
 
 export type LocalResult = LocalVerdict & {
+  /** rPPG result of the hold-still burst, or null when `pulseRule` is 'off'. */
+  pulse: PulseResult | null
   /** Embedding of the neutral frame — save it to enrol this person locally. */
   embedding: Float32Array | null
   /** Per-frame embeddings, for the debug screen. */
@@ -60,6 +66,16 @@ export type LocalLivenessCameraProps = {
   matchMin?: number | undefined
   /** Share one embedder across screens so the model loads once. */
   embedder?: FaceEmbedder | undefined
+  /**
+   * rPPG pulse check after the challenges (silicone-mask defence): the user
+   * holds still for `pulseMs` while the face is snapshotted; the skin colour
+   * must carry a heartbeat. 'advisory' (default) reports the score without
+   * failing on it — it is calibrated on synthetic traces only; 'enforce'
+   * adds PULSE_ABSENT below `pulseMin`; 'off' skips the burst.
+   */
+  pulseRule?: PulseRule | undefined
+  pulseMs?: number | undefined
+  pulseMin?: number | undefined
   locale?: Locale
   theme?: EKYCTheme
   tuning?: ChallengeTuning
@@ -71,6 +87,7 @@ const CAMERA_CONSTRAINTS = [{ fps: 60 }]
 type Screen =
   | { kind: 'starting' }
   | { kind: 'capturing' }
+  | { kind: 'pulsing' }
   | { kind: 'judging' }
   | { kind: 'result'; passed: boolean; reasons: string[] }
   | { kind: 'error'; message: string }
@@ -106,6 +123,9 @@ export function LocalLivenessCamera({
   consistencyMin,
   matchMin,
   embedder,
+  pulseRule = 'advisory',
+  pulseMs = 7000,
+  pulseMin = DEFAULT_PULSE_MIN,
   locale = 'th',
   theme = defaultTheme,
   tuning,
@@ -134,6 +154,8 @@ export function LocalLivenessCamera({
   const latest = useRef<FaceSignal | null>(null)
   const startedAt = useRef(0)
   const finished = useRef(false)
+  /** Burst frames: (device time, file uri) — sampled after capture. */
+  const burst = useRef<{ t: number; uri: string }[]>([])
 
   const ownEmbedder = useMemo(() => embedder ?? new FaceEmbedder(), [embedder])
   const stillDetector = useRef<ImageFaceDetector | null>(null)
@@ -160,6 +182,89 @@ export function LocalLivenessCamera({
       session.current?.abort('captureFailed')
     }
   }, [])
+
+  /** Burst variant: grab now, encode later; returns the grab time or null. */
+  const snapshotBurst = useCallback(async (index: number): Promise<number | null> => {
+    const camera = cameraRef.current
+    if (!camera) return null
+    const t = Date.now()
+    try {
+      const image = await camera.takeSnapshot()
+      pending.current.push(
+        image
+          .saveToTemporaryFileAsync('jpg', 80)
+          .then((path) => {
+            burst.current.push({ t, uri: path })
+          })
+          .catch((error: Error) => log('burst encode failed', `${index}: ${error.message}`)),
+      )
+      return t
+    } catch (error) {
+      log('burst grab failed', `${index}: ${(error as Error).message}`)
+      return null
+    }
+  }, [])
+
+  // The hold-still burst: snapshot the face as fast as the device allows for
+  // ~pulseMs. Frames are encoded off the critical path and sampled in judgeAll.
+  const runPulse = useCallback(async () => {
+    burst.current = []
+    if (pulseRule === 'off') return
+    setScreen({ kind: 'pulsing' })
+    const started = Date.now()
+    let index = 0
+    while (Date.now() - started < pulseMs) {
+      const tick = Date.now()
+      const t = await snapshotBurst(index)
+      if (t !== null) index += 1
+      const elapsed = Date.now() - tick
+      if (elapsed < 40) await new Promise((resolve) => setTimeout(resolve, 40 - elapsed))
+    }
+    const span = Date.now() - started
+    log('pulse burst', `${index} frames in ${span}ms (${span ? Math.round((index * 1000) / span) : 0} fps)`)
+  }, [pulseRule, pulseMs, snapshotBurst])
+
+  /**
+   * rPPG over the burst: detect the face on the first usable frame, keep that
+   * (slightly grown) box for every frame — the user is holding still — read a
+   * 32x32 thumbnail per frame with one image op, average forehead + cheeks,
+   * and score the colour traces.
+   */
+  const measurePulse = useCallback(async (): Promise<PulseResult | null> => {
+    if (pulseRule === 'off') return null
+    const frames = [...burst.current].sort((a, b) => a.t - b.t)
+    if (frames.length === 0) return { score: 0, bpm: 0, prominenceDb: 0, frames: 0, spanMs: 0, samplingHz: 0, patches: 0, note: 'too_short' }
+    if (!stillDetector.current) {
+      stillDetector.current = createImageFaceDetector({ performanceMode: 'accurate', minFaceSize: 0.15 })
+    }
+    let box: { x: number; y: number; w: number; h: number } | null = null
+    for (const f of frames.slice(0, 5)) {
+      try {
+        const faces = stillDetector.current.detectFaces(f.uri)
+        if (faces.length === 0) continue
+        const face = faces.reduce((a, b) => (b.bounds.width > a.bounds.width ? b : a))
+        const fw = face.frameWidth || 1
+        const fh = face.frameHeight || 1
+        box = stableFaceBox({ x: face.bounds.x / fw, y: face.bounds.y / fh, w: face.bounds.width / fw, h: face.bounds.height / fh })
+        break
+      } catch (error) {
+        log('pulse detect failed', (error as Error).message)
+      }
+    }
+    if (!box) return { score: 0, bpm: 0, prominenceDb: 0, frames: frames.length, spanMs: 0, samplingHz: 0, patches: 0, note: 'flat' }
+    const times: number[] = []
+    const colors: Rgb[][] = []
+    for (const f of frames) {
+      try {
+        const rgba = await faceThumbnail(f.uri, box, FACE_THUMB)
+        times.push(f.t)
+        colors.push(samplePatches(rgba, FACE_THUMB, DEFAULT_PATCHES))
+      } catch (error) {
+        log('pulse sample failed', (error as Error).message)
+      }
+    }
+    return pulseLivenessScore(times, colors)
+  }, [pulseRule])
 
   // ---- judge -------------------------------------------------------------
 
@@ -201,6 +306,9 @@ export function LocalLivenessCamera({
         reasons.push('FRAME_UNREADABLE')
       }
     }
+    const pulse = await measurePulse()
+    if (pulse) log('pulse', `score=${pulse.score.toFixed(3)} bpm=${pulse.bpm.toFixed(0)} prom=${pulse.prominenceDb.toFixed(1)}dB frames=${pulse.frames} ${pulse.note}`)
+    if (pulse && pulseRule === 'enforce' && pulse.score < pulseMin) reasons.push('PULSE_ABSENT')
     const embedMs = Date.now() - t0
     const verdict = judge(embeddings, {
       ...(consistencyMin !== undefined ? { consistencyMin } : {}),
@@ -221,18 +329,20 @@ export function LocalLivenessCamera({
       ...verdict,
       passed,
       reasons: allReasons,
+      pulse,
       embedding: neutral,
       frames: embeddings,
       timings: { captureMs, embedMs },
       challenges: issued.current,
     })
-  }, [ownEmbedder, consistencyMin, matchMin, reference])
+  }, [ownEmbedder, consistencyMin, matchMin, reference, measurePulse, pulseRule, pulseMin])
 
   // ---- lifecycle ---------------------------------------------------------
 
   const begin = useCallback(() => {
     frames.current.clear()
     pending.current = []
+    burst.current = []
     finished.current = false
     issued.current = challenges ?? pickLocalChallenges()
     const now = Date.now()
@@ -256,13 +366,13 @@ export function LocalLivenessCamera({
       }
       if (event.type === 'stepComplete') return
       if (event.type === 'complete') {
-        void judgeAll()
+        void runPulse().then(judgeAll)
         return
       }
       log('liveness failed', event.reason)
       setScreen({ kind: 'result', passed: false, reasons: [`LOCAL_${event.reason}`] })
     },
-    [snapshot, judgeAll],
+    [snapshot, runPulse, judgeAll],
   )
   handleEventRef.current = handleEvent
 
@@ -364,9 +474,11 @@ export function LocalLivenessCamera({
 
   const holding = state.holdProgress > 0.05
   const instruction =
-    screen.kind === 'judging' || state.phase === 'uploading'
-      ? t.uploading
-      : instructionFor(locale, state.framing, state.challenge, holding)
+    screen.kind === 'pulsing'
+      ? t.pulseHold
+      : screen.kind === 'judging' || state.phase === 'uploading'
+        ? t.uploading
+        : instructionFor(locale, state.framing, state.challenge, holding)
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
@@ -374,7 +486,7 @@ export function LocalLivenessCamera({
         <Camera
           style={StyleSheet.absoluteFill}
           device={device}
-          isActive={screen.kind === 'capturing' && (state.phase === 'running' || state.phase === 'uploading')}
+          isActive={screen.kind === 'pulsing' || (screen.kind === 'capturing' && (state.phase === 'running' || state.phase === 'uploading'))}
           outputs={outputs}
           constraints={CAMERA_CONSTRAINTS}
           ref={cameraRef}
@@ -411,7 +523,7 @@ export function LocalLivenessCamera({
         <View style={styles.bottom} pointerEvents="box-none">
           <InstructionBanner text={instruction} theme={theme} reduceMotion={reduceMotion} tone={state.framing === 'multipleFaces' ? 'warning' : 'normal'} />
           <View style={styles.dots}>
-            {screen.kind === 'judging' || state.phase === 'uploading' ? (
+            {screen.kind === 'judging' || (state.phase === 'uploading' && screen.kind !== 'pulsing') ? (
               <ActivityIndicator color={theme.colors.accent} />
             ) : (
               <StepDots count={state.stepCount} current={state.stepIndex} theme={theme} label={t.a11y.progress(Math.min(state.stepIndex + 1, state.stepCount), state.stepCount)} />

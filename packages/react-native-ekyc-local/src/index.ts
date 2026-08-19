@@ -14,8 +14,8 @@
  * ```
  */
 export { LocalLivenessCamera } from './LocalLivenessCamera'
-export type { LocalLivenessCameraProps, LocalResult } from './LocalLivenessCamera'
-export { FaceEmbedder, cropFace } from './embedder'
+export type { LocalLivenessCameraProps, LocalResult, PulseRule } from './LocalLivenessCamera'
+export { FaceEmbedder, cropFace, faceThumbnail } from './embedder'
 export type { FaceCrop } from './embedder'
 export {
   DEFAULT_CONSISTENCY_MIN,
@@ -34,3 +34,7 @@ export {
 } from './identity'
 export type { ConsistencyReport, DecodedImage, FrameEmbedding, LocalVerdict } from './identity'
 export { LOCAL_CHALLENGES, pickLocalChallenges } from './challenges'
+export { DEFAULT_PULSE_MIN, PROMINENCE_CENTRE_DB, pulseLivenessScore } from './pulse'
+export type { PulseResult, Rgb } from './pulse'
+export { DEFAULT_PATCHES, FACE_THUMB, patchMean, samplePatches, stableFaceBox } from './skin'
+export type { RelRect } from './skin'

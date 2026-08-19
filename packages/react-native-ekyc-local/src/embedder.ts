@@ -13,12 +13,14 @@
  * float32 tensor → TFLite. Roughly 30–60 ms per face on a mid-range phone.
  */
 
+import { Asset } from 'expo-asset'
 import * as ImageManipulator from 'expo-image-manipulator'
 import { loadTensorflowModel, type TensorflowModel } from 'react-native-fast-tflite'
 
 import type { Rect } from '@ekyc/react-native-ekyc'
 
 import { EMBEDDING_DIM, EMBEDDING_INPUT, decodeJpeg, l2normalize, preprocessRgba } from './identity'
+import { FACE_THUMB } from './skin'
 
 /** How much of the ML Kit box to grow the crop by on each side. ArcFace-style
  * crops want the face tight but with brow and chin in; ML Kit boxes are already
@@ -48,12 +50,32 @@ export class FaceEmbedder {
   async load(): Promise<TensorflowModel> {
     if (this.model) return this.model
     if (!this.loading) {
-      this.loading = loadTensorflowModel(this.source, []).then((m) => {
+      this.loading = this.resolve().then((url) => loadTensorflowModel({ url }, []).then((m) => {
         this.model = m
         return m
-      })
+      }))
     }
     return this.loading
+  }
+
+  /**
+   * Turn the model source into a `file://` URL.
+   *
+   * `react-native-fast-tflite` resolves a `require()`d asset through
+   * `Image.resolveAssetSource`, which in a **release** build on Android
+   * yields a bare resource name (`__packages_..._mobile_face_net`) rather
+   * than a URL, and its native loader throws `MalformedURLException: no
+   * protocol` (seen on-device 2026-08-18). `expo-asset` knows how to extract
+   * a bundled asset to the cache directory in every build type, so go through
+   * it and hand fast-tflite an explicit URL.
+   */
+  private async resolve(): Promise<string> {
+    if (typeof this.source === 'object' && 'url' in this.source) return this.source.url
+    const asset = Asset.fromModule(this.source)
+    if (!asset.localUri) await asset.downloadAsync()
+    const uri = asset.localUri ?? asset.uri
+    if (!uri) throw new Error('could not resolve the MobileFaceNet asset')
+    return uri
   }
 
   get inputShape(): number[] | null {
@@ -133,4 +155,27 @@ export async function cropFace(crop: FaceCrop): Promise<{ width: number; height:
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v))
+}
+
+/**
+ * Small RGBA thumbnail of a face box — one image op per frame, for rPPG
+ * sampling. `box` is normalised to the source image.
+ */
+export async function faceThumbnail(uri: string, box: Rect, side: number = FACE_THUMB): Promise<Uint8Array> {
+  const probe = await ImageManipulator.manipulateAsync(uri, [], { base64: false })
+  const W = probe.width
+  const H = probe.height
+  const ox = clamp(Math.round(box.x * W), 0, Math.max(0, W - 2))
+  const oy = clamp(Math.round(box.y * H), 0, Math.max(0, H - 2))
+  const ow = Math.max(2, Math.min(Math.round(box.w * W), W - ox))
+  const oh = Math.max(2, Math.min(Math.round(box.h * H), H - oy))
+  const out = await ImageManipulator.manipulateAsync(
+    uri,
+    [{ crop: { originX: ox, originY: oy, width: ow, height: oh } }, { resize: { width: side, height: side } }],
+    { compress: 1, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+  )
+  if (!out.base64) throw new Error('image manipulator returned no base64')
+  const decoded = decodeJpeg(out.base64)
+  if (decoded.width !== side || decoded.height !== side) throw new Error(`thumbnail came back ${decoded.width}x${decoded.height}`)
+  return decoded.rgba
 }

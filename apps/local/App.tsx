@@ -24,7 +24,7 @@ import {
 } from '@ekyc/react-native-ekyc-local'
 
 /** Bumped per published APK so a phone can prove which build it runs. */
-const APP_BUILD = 2
+const APP_BUILD = 3
 
 /**
  * Light theme — deliberately the opposite of the server demo's dark one, so
@@ -124,7 +124,7 @@ export default function App() {
         <Text style={styles.meta}>{modelState}</Text>
 
         <Text style={styles.label}>ทดสอบ liveness</Text>
-        <Text style={styles.body}>หันซ้าย · หันขวา · อ้าปาก · พยักหน้า (สุ่มลำดับ) แล้วเช็คว่าทุกภาพเป็นคนเดียวกัน</Text>
+        <Text style={styles.body}>หันซ้าย · หันขวา · อ้าปาก · พยักหน้า (สุ่มลำดับ) → อยู่นิ่ง 7 วิ วัดชีพจรจากสีผิว (rPPG) → เช็คว่าทุกภาพเป็นคนเดียวกันด้วย MobileFaceNet</Text>
         <Button label="เริ่มสแกน (เช็คความสอดคล้องอย่างเดียว)" onPress={() => setScreen({ kind: 'intro', mode: 'check' })} />
 
         <Text style={styles.label}>จดจำใบหน้าในเครื่อง</Text>
@@ -177,7 +177,7 @@ export default function App() {
         ) : null}
 
         <Text style={styles.footnote}>
-          ตัวนี้พิสูจน์ว่า “คนที่ทำท่าทั้งหมดเป็นคนเดียวกัน” และ (ถ้าเลือก verify) ตรงกับที่บันทึกไว้ — ยังไม่มีการตรวจภาพถ่าย/จอ/หน้ากากบนเครื่อง
+          ตัวนี้พิสูจน์ว่า “คนที่ทำท่าทั้งหมดเป็นคนเดียวกัน” (และถ้าเลือก verify ตรงกับที่บันทึกไว้) · หน้ากากแข็งอ้าปากไม่ได้จึงไม่ผ่านขั้นอ้าปาก · ชีพจร rPPG จับหน้ากากซิลิโคน (ยังเป็น advisory จนกว่าจะวัดบนมือถือจริง) · ยังไม่มีการตรวจภาพถ่าย/จอบนเครื่อง
         </Text>
       </ScrollView>
     </SafeAreaView>
