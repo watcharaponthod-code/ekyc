@@ -1,37 +1,26 @@
 /**
- * eKYC Local — 100 % on-device liveness + identity.
+ * eKYC Local — 100 % on-device liveness, light edition.
  *
- * Nothing here talks to a network. ML Kit runs the turn / open-mouth / nod
- * coaching, MobileFaceNet (TFLite) embeds each captured pose, and the app
- * checks every frame is the same person. A saved face ("enrol") lives in the
- * app's private storage as a 192-number template — never as an image.
+ * No network for the liveness itself: ML Kit drives turn left / turn right /
+ * open mouth / move closer / move farther as movements from the person's own
+ * neutral pose, with a face-continuity check across the run. No model, no
+ * image processing — the verdict is ready when the last step completes.
  *
- * Flow: home → capture → result → home.
+ * The one optional network call is the developer log sender at the bottom of
+ * the home screen (numbers only, to a receiver on your own LAN).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Alert, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native'
 import { File, Paths } from 'expo-file-system'
 import * as Sharing from 'expo-sharing'
 import { IntroView, defaultTheme, type EKYCTheme } from '@ekyc/react-native-ekyc'
-import {
-  DEFAULT_CONSISTENCY_MIN,
-  DEFAULT_MATCH_MIN,
-  FaceEmbedder,
-  LocalLivenessCamera,
-  embeddingFromJson,
-  embeddingToJson,
-  type LocalResult,
-} from '@ekyc/react-native-ekyc-local'
+import { LocalLivenessCamera, type LocalResult } from '@ekyc/react-native-ekyc-local'
 
 /** Bumped per published APK so a phone can prove which build it runs. */
-const APP_BUILD = 7
+const APP_BUILD = 9
 
-/**
- * Light theme — deliberately the opposite of the server demo's dark one, so
- * the two apps are never mistaken for each other on a phone. Same geometry
- * and typography as `defaultTheme`; only the palette changes.
- */
+/** Light theme — deliberately the opposite of the server demo's dark one. */
 const theme: EKYCTheme = {
   ...defaultTheme,
   colors: {
@@ -48,15 +37,20 @@ const theme: EKYCTheme = {
     onAccent: '#FFFFFF',
   },
 }
-const TEMPLATE_FILE = new File(Paths.document, 'ekyc-local-template.json')
-/** One JSON line per session — numbers only, no images or embeddings. This is what tuning reads. */
+
+/** One JSON line per session — numbers only, no images. This is what tuning reads. */
 const LOG_FILE = new File(Paths.document, 'ekyc-local-sessions.jsonl')
-/**
- * Developer-only: where to POST the log over the LAN (`scripts/log_receiver.py`
- * on the laptop prints the address). Empty = off. This is the *only* network
- * call in the app, it is opt-in, and it carries numbers only.
- */
+/** Developer-only: where to POST the log over the LAN (`scripts/log_receiver.py` prints it). Empty = off. */
 const RECEIVER_FILE = new File(Paths.document, 'ekyc-local-receiver.txt')
+
+function appendLog(line: string): void {
+  try {
+    const previous = LOG_FILE.exists ? LOG_FILE.textSync() : ''
+    LOG_FILE.write(previous + line + '\n')
+  } catch {
+    /* logging must never break the flow */
+  }
+}
 
 function loadReceiver(): string {
   try {
@@ -86,35 +80,14 @@ async function sendLog(url: string): Promise<string> {
   }
 }
 
-function appendLog(line: string): void {
-  try {
-    const previous = LOG_FILE.exists ? LOG_FILE.textSync() : ''
-    LOG_FILE.write(previous + line + '\n')
-  } catch {
-    /* logging must never break the flow */
-  }
-}
-
-type Mode = 'check' | 'enroll' | 'verify'
-type Screen = { kind: 'home' } | { kind: 'intro'; mode: Mode } | { kind: 'capture'; mode: Mode }
-
-function loadTemplate(): Float32Array | null {
-  try {
-    if (!TEMPLATE_FILE.exists) return null
-    return embeddingFromJson(TEMPLATE_FILE.textSync())
-  } catch {
-    return null
-  }
-}
+type Screen = { kind: 'home' } | { kind: 'intro' } | { kind: 'capture' }
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>({ kind: 'home' })
-  const [template, setTemplate] = useState<Float32Array | null>(() => loadTemplate())
-  const [last, setLast] = useState<{ mode: Mode; result: LocalResult } | null>(null)
-  const embedder = useMemo(() => new FaceEmbedder(), [])
-  const [modelState, setModelState] = useState('loading model…')
+  const [last, setLast] = useState<LocalResult | null>(null)
+  const [runs, setRuns] = useState<{ total: number; passed: number }>({ total: 0, passed: 0 })
   const [receiver, setReceiver] = useState<string>(() => loadReceiver())
-  const [autoSend, setAutoSend] = useState(false)
+  const [autoSend, setAutoSend] = useState(true)
   const [sendState, setSendState] = useState<string>('')
 
   useEffect(() => {
@@ -125,29 +98,15 @@ export default function App() {
     }
   }, [receiver])
 
-  useEffect(() => {
-    embedder
-      .load()
-      .then((m) => setModelState(`MobileFaceNet ready · in ${JSON.stringify(m.inputs[0]?.shape)} → ${JSON.stringify(m.outputs[0]?.shape)}`))
-      .catch((e: Error) => setModelState(`model failed: ${e.message}`))
-  }, [embedder])
-
   const handleResult = useCallback(
-    (mode: Mode, result: LocalResult) => {
-      setLast({ mode, result })
-      appendLog(JSON.stringify({ mode, ...result.report }))
+    (result: LocalResult) => {
+      setLast(result)
+      setRuns((r) => ({ total: r.total + 1, passed: r.passed + (result.passed ? 1 : 0) }))
+      appendLog(JSON.stringify({ mode: 'check', build: APP_BUILD, ...result.report }))
       if (autoSend && receiver.trim()) {
         sendLog(receiver.trim())
           .then(setSendState)
           .catch((e: Error) => setSendState(`ส่งไม่สำเร็จ: ${e.message}`))
-      }
-      if (mode === 'enroll' && result.passed && result.embedding) {
-        try {
-          TEMPLATE_FILE.write(embeddingToJson(result.embedding))
-          setTemplate(result.embedding)
-        } catch (e) {
-          Alert.alert('บันทึกไม่สำเร็จ', (e as Error).message)
-        }
       }
     },
     [autoSend, receiver],
@@ -158,88 +117,46 @@ export default function App() {
       <IntroView
         locale="th"
         theme={theme}
-        steps={['อยู่ในที่ที่มีแสงพอ และถอดแว่นกันแดด', 'จัดใบหน้าให้อยู่ในกรอบวงรี มองตรง', 'ทำตามคำสั่ง: หันซ้าย หันขวา อ้าปาก พยักหน้า แล้วอยู่นิ่ง 7 วินาที']}
+        steps={['อยู่ในที่ที่มีแสงพอ และถอดแว่นกันแดด', 'จัดใบหน้าให้อยู่ในกรอบวงรี มองตรง', 'ทำตามคำสั่ง: หันซ้าย หันขวา อ้าปาก ขยับเข้า ขยับออก (กลับมามองตรงระหว่างท่า)']}
         consent="ประมวลผลบนเครื่องทั้งหมด ไม่มีการส่งภาพหรือข้อมูลใบหน้าออกจากโทรศัพท์"
-        onStart={() => setScreen({ kind: 'capture', mode: screen.mode })}
+        onStart={() => setScreen({ kind: 'capture' })}
         onCancel={() => setScreen({ kind: 'home' })}
       />
     )
   }
 
   if (screen.kind === 'capture') {
-    return (
-      <LocalLivenessCamera
-        embedder={embedder}
-        reference={screen.mode === 'verify' ? template : null}
-        locale="th"
-        theme={theme}
-        debug
-        onResult={(r) => handleResult(screen.mode, r)}
-        onCancel={() => setScreen({ kind: 'home' })}
-      />
-    )
+    return <LocalLivenessCamera locale="th" theme={theme} debug onResult={handleResult} onCancel={() => setScreen({ kind: 'home' })} />
   }
 
+  const c = last?.continuity
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar barStyle="dark-content" />
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>eKYC Local</Text>
-        <Text style={styles.meta}>{`ทำงานบนเครื่องล้วน ไม่มีเซิร์ฟเวอร์ · build ${APP_BUILD}`}</Text>
-        <Text style={styles.meta}>{modelState}</Text>
+        <Text style={styles.meta}>{`ทำงานบนเครื่องล้วน ไม่มีเซิร์ฟเวอร์ ไม่มีโมเดล · build ${APP_BUILD}`}</Text>
 
         <Text style={styles.label}>ทดสอบ liveness</Text>
-        <Text style={styles.body}>หันซ้าย · หันขวา · อ้าปากแล้วหุบ · เงยแล้วก้ม (สุ่มลำดับ กลับมามองตรงระหว่างท่า) → อยู่นิ่ง 7 วิ วัดชีพจรจากสีผิว (rPPG) → เช็คว่าทุกภาพเป็นคนเดียวกันด้วย MobileFaceNet</Text>
-        <Button label="เริ่มสแกน (เช็คความสอดคล้องอย่างเดียว)" onPress={() => setScreen({ kind: 'intro', mode: 'check' })} />
-
-        <Text style={styles.label}>จดจำใบหน้าในเครื่อง</Text>
-        <Text style={styles.body}>
-          {template ? 'มีใบหน้าที่บันทึกไว้แล้ว 1 คน (เก็บเป็นตัวเลข 192 ค่า ไม่ใช่รูป)' : 'ยังไม่มีใบหน้าที่บันทึกไว้'}
-        </Text>
-        <Button label={template ? 'บันทึกใบหน้าใหม่ (แทนที่)' : 'บันทึกใบหน้าฉัน (enroll)'} onPress={() => setScreen({ kind: 'intro', mode: 'enroll' })} />
-        <Button
-          label="ยืนยันว่าเป็นคนที่บันทึกไว้ (verify)"
-          variant="ghost"
-          onPress={() => {
-            if (!template) {
-              Alert.alert('ยังไม่มีข้อมูล', 'บันทึกใบหน้าก่อน แล้วค่อยยืนยัน')
-              return
-            }
-            setScreen({ kind: 'intro', mode: 'verify' })
-          }}
-        />
-        {template ? (
-          <Button
-            label="ลบใบหน้าที่บันทึกไว้"
-            variant="ghost"
-            onPress={() => {
-              try {
-                if (TEMPLATE_FILE.exists) TEMPLATE_FILE.delete()
-              } catch {
-                /* already gone */
-              }
-              setTemplate(null)
-            }}
-          />
-        ) : null}
+        <Text style={styles.body}>หันซ้าย · หันขวา · อ้าปากแล้วหุบ · ขยับเข้าแล้วถอย · ขยับออกแล้วกลับ (สุ่มลำดับ กลับมามองตรงระหว่างท่า) + ตรวจว่าใบหน้าอยู่ต่อเนื่องตลอดรอบ</Text>
+        <Button label="เริ่มสแกน" onPress={() => setScreen({ kind: 'intro' })} />
+        {runs.total > 0 ? <Text style={styles.meta}>{`รอบนี้เปิดแอป: ผ่าน ${runs.passed} / ${runs.total}`}</Text> : null}
 
         {last ? (
           <View style={styles.card}>
-            <Text style={styles.label}>ผลล่าสุด · {last.mode}</Text>
-            <Text style={[styles.body, { color: last.result.passed ? theme.colors.success : theme.colors.danger, fontWeight: '700' }]}>
-              {last.result.passed ? 'ผ่าน' : `ไม่ผ่าน: ${last.result.reasons.join(', ')}`}
+            <Text style={styles.label}>ผลล่าสุด</Text>
+            <Text style={[styles.body, { color: last.passed ? theme.colors.success : theme.colors.danger, fontWeight: '700' }]}>
+              {last.passed ? 'ผ่าน' : `ไม่ผ่าน: ${last.reasons.join(', ')}`}
             </Text>
             <Text style={styles.mono}>
-              {`challenges: ${last.result.challenges.join(' → ')}\n` +
-                `consistency min: ${last.result.consistency.min.toFixed(3)} (≥ ${DEFAULT_CONSISTENCY_MIN})` +
-                (last.result.consistency.weakest ? `  weakest ${last.result.consistency.weakest.join('↔')}` : '') +
-                `\n` +
-                last.result.consistency.pairs.map((p) => `  ${p.a} ↔ ${p.b}: ${p.similarity.toFixed(3)}`).join('\n') +
-                (last.result.match ? `\nmatch vs saved: ${last.result.match.score.toFixed(3)} (≥ ${DEFAULT_MATCH_MIN}) ${last.result.match.ok ? 'ok' : 'NO'}` : '') +
-                `\ncapture ${last.result.timings.captureMs} ms · embed ${last.result.timings.embedMs} ms · frames ${last.result.frames.length}` +
-                (Object.keys(last.result.report.stepMetrics).length
-                  ? `\nขั้นตอน (ทำได้ / ต้องการ):\n` +
-                    Object.values(last.result.report.stepMetrics)
+              {`ลำดับท่า: ${last.challenges.join(' → ')}\n` +
+                `เวลา ${(last.timings.captureMs / 1000).toFixed(1)} วินาที\n` +
+                (c
+                  ? `ใบหน้าต่อเนื่อง: ${c.ok ? 'ใช่' : 'ไม่'} (หลุดนานสุด ${c.maxGapMs} ms, กระโดดมากสุด ${(c.maxJump * 100).toFixed(0)}%, ${c.faceFrames}/${c.frames} เฟรม) · advisory\n`
+                  : '') +
+                (Object.keys(last.report.stepMetrics).length
+                  ? `ขั้นตอน (ทำได้ / ต้องการ):\n` +
+                    Object.values(last.report.stepMetrics)
                       .map((m) => `  ${m.challenge}${m.phase ? ` (ช่วงที่ ${m.phase + 1})` : ''}: ${m.best.toFixed(2)} ${m.direction === 'above' ? '≥' : '≤'} ${m.needed.toFixed(2)}`)
                       .join('\n')
                   : '')}
@@ -247,31 +164,8 @@ export default function App() {
           </View>
         ) : null}
 
-        <Text style={styles.label}>บันทึกการทดสอบ (log)</Text>
-        <Text style={styles.body}>ทุกครั้งที่สแกน แอปจะบันทึกตัวเลขของรอบนั้น (ไม่มีรูป ไม่มีข้อมูลใบหน้า) ส่งไฟล์นี้มาเพื่อปรับเกณฑ์ให้ตรงกับเครื่องจริง</Text>
-        <Button
-          label="แชร์ log การทดสอบ"
-          variant="ghost"
-          onPress={() => {
-            void (async () => {
-              try {
-                if (!LOG_FILE.exists) {
-                  Alert.alert('ยังไม่มี log', 'สแกนสักครั้งก่อน')
-                  return
-                }
-                if (!(await Sharing.isAvailableAsync())) {
-                  Alert.alert('แชร์ไม่ได้บนเครื่องนี้', LOG_FILE.uri)
-                  return
-                }
-                await Sharing.shareAsync(LOG_FILE.uri, { mimeType: 'application/json', dialogTitle: 'eKYC Local session log' })
-              } catch (e) {
-                Alert.alert('แชร์ไม่สำเร็จ', (e as Error).message)
-              }
-            })()
-          }}
-        />
         <Text style={styles.label}>ส่ง log ไปคอมผ่าน Wi-Fi (สำหรับปรับเกณฑ์)</Text>
-        <Text style={styles.body}>รัน `python packages/react-native-ekyc-local/scripts/log_receiver.py` บนคอม แล้วพิมพ์ที่อยู่ที่มันบอก (คอมและมือถือต้องอยู่ Wi-Fi เดียวกัน) — ส่งเฉพาะตัวเลข ไม่มีรูป</Text>
+        <Text style={styles.body}>รัน `python packages/react-native-ekyc-local/scripts/log_receiver.py` บนคอม แล้วพิมพ์ที่อยู่ที่มันบอก — ส่งเฉพาะตัวเลข ไม่มีรูป</Text>
         <TextInput
           style={styles.input}
           value={receiver}
@@ -296,12 +190,29 @@ export default function App() {
               .catch((e: Error) => setSendState(`ส่งไม่สำเร็จ: ${e.message} — เช็คว่า receiver รันอยู่และอยู่ Wi-Fi เดียวกัน`))
           }}
         />
-        <Button
-          label={autoSend ? 'ส่งอัตโนมัติหลังทุกรอบ: เปิด' : 'ส่งอัตโนมัติหลังทุกรอบ: ปิด'}
-          variant="ghost"
-          onPress={() => setAutoSend((v) => !v)}
-        />
+        <Button label={autoSend ? 'ส่งอัตโนมัติหลังทุกรอบ: เปิด' : 'ส่งอัตโนมัติหลังทุกรอบ: ปิด'} variant="ghost" onPress={() => setAutoSend((v) => !v)} />
         {sendState ? <Text style={styles.meta}>{sendState}</Text> : null}
+        <Button
+          label="แชร์ไฟล์ log"
+          variant="ghost"
+          onPress={() => {
+            void (async () => {
+              try {
+                if (!LOG_FILE.exists) {
+                  Alert.alert('ยังไม่มี log', 'สแกนสักครั้งก่อน')
+                  return
+                }
+                if (!(await Sharing.isAvailableAsync())) {
+                  Alert.alert('แชร์ไม่ได้บนเครื่องนี้', LOG_FILE.uri)
+                  return
+                }
+                await Sharing.shareAsync(LOG_FILE.uri, { mimeType: 'application/json', dialogTitle: 'eKYC Local session log' })
+              } catch (e) {
+                Alert.alert('แชร์ไม่สำเร็จ', (e as Error).message)
+              }
+            })()
+          }}
+        />
         <Button
           label="ล้าง log"
           variant="ghost"
@@ -316,7 +227,7 @@ export default function App() {
         />
 
         <Text style={styles.footnote}>
-          ตัวนี้พิสูจน์ว่า “คนที่ทำท่าทั้งหมดเป็นคนเดียวกัน” (และถ้าเลือก verify ตรงกับที่บันทึกไว้) · หน้ากากแข็งอ้าปากไม่ได้จึงไม่ผ่านขั้นอ้าปาก · ชีพจร rPPG จับหน้ากากซิลิโคน (ยังเป็น advisory จนกว่าจะวัดบนมือถือจริง) · ยังไม่มีการตรวจภาพถ่าย/จอบนเครื่อง
+          ตัวนี้พิสูจน์ว่า “มีคนอยู่หน้ากล้องและทำท่าตามคำสั่งจริงต่อเนื่องทั้งรอบ” — ไม่มีการจดจำว่าเป็นใคร และยังไม่มีการตรวจภาพถ่าย/จอบนเครื่อง (ระบบที่เชื่อมเซิร์ฟเวอร์เป็นตัวที่มีชั้นเหล่านั้น)
         </Text>
       </ScrollView>
     </SafeAreaView>

@@ -152,3 +152,42 @@ describe('recenter between challenges', () => {
     expect(b.session.state.phase).toBe('uploading')
   })
 })
+
+describe('move closer / farther = change of distance, then back', () => {
+  const grow = CHALLENGE_DEFAULTS.moveCloserMinGrow
+  const shrink = CHALLENGE_DEFAULTS.moveFartherMinShrink
+  const band = CHALLENGE_DEFAULTS.moveReturnBand
+  const box = (w: number) => ({ box: { x: 0.5 - w / 2, y: 0.5 - w * 0.6, w, h: w * 1.2 } })
+
+  it('closer: grow ≥ 25 % (held, captured) then back within 10 %', () => {
+    const { session, events } = start(['moveCloser'])
+    let t = feedFor(session, box(0.35), CENTER_MS, 0)
+    t = feedFor(session, box(0.35 * (1 + grow - 0.02)), 800, t) // not quite there
+    expect(session.state.stepPhase).toBe(0)
+    t = feedFor(session, box(0.35 * (1 + grow + 0.02)), 800, t) // held closer
+    expect(session.state.stepPhase).toBe(1)
+    expect(events.filter((e) => e.type === 'capture' && e.challenge === 'moveCloser')).toHaveLength(1)
+    t = feedFor(session, box(0.35 * (1 + band + 0.03)), 200, t) // not back yet
+    expect(session.state.phase).toBe('running')
+    feedFor(session, box(0.35 * (1 + band - 0.02)), 100, t)
+    expect(session.state.phase).toBe('uploading')
+  })
+
+  it('farther: shrink ≥ 20 % then back; staying far never completes', () => {
+    const { session } = start(['moveFarther'])
+    let t = feedFor(session, box(0.4), CENTER_MS, 0)
+    t = feedFor(session, box(0.4 * (1 - shrink - 0.02)), 4000, t) // stays far
+    expect(session.state.stepPhase).toBe(1)
+    expect(session.state.phase).toBe('running')
+    feedFor(session, box(0.4), 100, t)
+    expect(session.state.phase).toBe('uploading')
+  })
+
+  it('a photo held still (constant box) never leaves phase 1', () => {
+    const { session } = start(['moveCloser'])
+    let t = feedFor(session, box(0.35), CENTER_MS, 0)
+    feedFor(session, box(0.35), 5000, t)
+    expect(session.state.stepPhase).toBe(0)
+    expect(session.state.phase).toBe('running')
+  })
+})

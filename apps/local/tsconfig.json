@@ -18,8 +18,7 @@
   },
   "include": [
     "**/*.ts",
-    "**/*.tsx",
-    "../../packages/react-native-ekyc-local/tflite.d.ts"
+    "**/*.tsx"
   ],
   "exclude": [
     "node_modules"

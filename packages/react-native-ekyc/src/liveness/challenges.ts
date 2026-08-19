@@ -64,6 +64,16 @@ export const CHALLENGE_DEFAULTS = {
   smileMin: 0.7,
   /** Smile, phase 2: probability must drop back below this fraction of `smileMin`. */
   smileRelaxFraction: 0.5,
+  /**
+   * Distance: the face-box width must grow by this fraction of its neutral
+   * width for "move closer" (0.35 → 0.44 of the frame) and shrink by
+   * `moveFartherMinShrink` for "move farther" (0.35 → 0.28), then come back to
+   * within `moveReturnBand` of neutral. Framing gates (`minFaceRatio` 0.22,
+   * `maxFaceRatio` 0.75) leave room for both from a normal selfie distance.
+   */
+  moveCloserMinGrow: 0.25,
+  moveFartherMinShrink: 0.2,
+  moveReturnBand: 0.1,
 } as const
 
 export type CenterOptions = {
@@ -319,6 +329,71 @@ export class NodChallenge extends Challenge {
   }
 }
 
+export type MoveOptions = {
+  /** Fractional change of the face-box width from neutral that counts as "moved". */
+  minChange?: number
+  /** Phase 2: back to within this fraction of the neutral width. */
+  returnBand?: number
+}
+
+/** Face-box width relative to the neutral frame's; 1 = unchanged, >1 closer. */
+function widthRatio(signal: FaceSignal, baseline: FaceSignal | null): number {
+  const base = baseline?.box.w ?? 0
+  return base > 1e-6 ? signal.box.w / base : 1
+}
+
+/**
+ * Move closer: the face must grow by `minChange` (held, snapshotted), then
+ * come back to about the starting distance. Distance is the one axis a flat
+ * photo *can* fake by moving the print — so this challenge is about
+ * cooperation and movement, not spoof resistance; the server flow still has
+ * PAD for the print.
+ */
+export class MoveCloserChallenge extends Challenge {
+  readonly name: ChallengeName = 'moveCloser'
+  override readonly phaseCount = 2
+  override readonly capturePhase = 0
+
+  constructor(private readonly options: MoveOptions = {}) {
+    super()
+  }
+
+  isSatisfied(signal: FaceSignal, baseline: FaceSignal | null = null, phase = 0): boolean {
+    const { minChange = CHALLENGE_DEFAULTS.moveCloserMinGrow, returnBand = CHALLENGE_DEFAULTS.moveReturnBand } = this.options
+    const r = widthRatio(signal, baseline)
+    return phase === 0 ? r >= 1 + minChange : Math.abs(r - 1) <= returnBand
+  }
+
+  override metric(signal: FaceSignal, baseline: FaceSignal | null = null, phase = 0): ChallengeMetric {
+    const { minChange = CHALLENGE_DEFAULTS.moveCloserMinGrow, returnBand = CHALLENGE_DEFAULTS.moveReturnBand } = this.options
+    const r = widthRatio(signal, baseline)
+    return phase === 0 ? { value: r, needed: 1 + minChange, direction: 'above' } : { value: Math.abs(r - 1), needed: returnBand, direction: 'below' }
+  }
+}
+
+/** Move farther: the face must shrink by `minChange`, then come back. */
+export class MoveFartherChallenge extends Challenge {
+  readonly name: ChallengeName = 'moveFarther'
+  override readonly phaseCount = 2
+  override readonly capturePhase = 0
+
+  constructor(private readonly options: MoveOptions = {}) {
+    super()
+  }
+
+  isSatisfied(signal: FaceSignal, baseline: FaceSignal | null = null, phase = 0): boolean {
+    const { minChange = CHALLENGE_DEFAULTS.moveFartherMinShrink, returnBand = CHALLENGE_DEFAULTS.moveReturnBand } = this.options
+    const r = widthRatio(signal, baseline)
+    return phase === 0 ? r <= 1 - minChange : Math.abs(r - 1) <= returnBand
+  }
+
+  override metric(signal: FaceSignal, baseline: FaceSignal | null = null, phase = 0): ChallengeMetric {
+    const { minChange = CHALLENGE_DEFAULTS.moveFartherMinShrink, returnBand = CHALLENGE_DEFAULTS.moveReturnBand } = this.options
+    const r = widthRatio(signal, baseline)
+    return phase === 0 ? { value: r, needed: 1 - minChange, direction: 'below' } : { value: Math.abs(r - 1), needed: returnBand, direction: 'below' }
+  }
+}
+
 export type ChallengeTuning = {
   center?: CenterOptions
   closeEyes?: CloseEyesOptions
@@ -326,6 +401,8 @@ export type ChallengeTuning = {
   smile?: SmileOptions
   openMouth?: OpenMouthOptions
   nod?: NodOptions
+  moveCloser?: MoveOptions
+  moveFarther?: MoveOptions
 }
 
 /**
@@ -381,6 +458,10 @@ function createChallenge(name: ChallengeName, tuning: ChallengeTuning): Challeng
       return new OpenMouthChallenge(tuning.openMouth)
     case 'nod':
       return new NodChallenge(tuning.nod)
+    case 'moveCloser':
+      return new MoveCloserChallenge(tuning.moveCloser)
+    case 'moveFarther':
+      return new MoveFartherChallenge(tuning.moveFarther)
     case 'center':
       return new CenterChallenge(tuning.center)
   }

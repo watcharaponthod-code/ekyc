@@ -26,7 +26,7 @@ jest.mock('react-native-fast-tflite', () => ({ loadTensorflowModel: jest.fn() })
 jest.mock('@ekyc/react-native-ekyc', () => ({ asFileUri: jest.requireActual('../../react-native-ekyc/src/client/EKYCClient').asFileUri }))
 jest.mock('expo-asset', () => ({ Asset: { fromModule: jest.fn() } }), { virtual: true })
 
-import { cropFace, faceThumbnail } from '../src/embedder'
+import { cropFace, faceThumbnail } from '../src/heavy/embedder'
 
 describe('image ops always receive a file:// URI', () => {
   beforeEach(() => calls.splice(0))

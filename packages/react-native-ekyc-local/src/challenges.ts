@@ -1,12 +1,17 @@
 import type { ChallengeName } from '@ekyc/react-native-ekyc'
 
-/** The four actions the local flow can ask for. `center` is always implied first. */
-export const LOCAL_CHALLENGES: readonly ChallengeName[] = ['turnLeft', 'turnRight', 'openMouth', 'nod']
+/**
+ * The actions the light local flow asks for. `center` is always implied
+ * first. Every one is a movement relative to the neutral frame (turn, open
+ * then close, closer/farther then back); `nod` and `closeEyes` remain
+ * available to hosts that pass their own list.
+ */
+export const LOCAL_CHALLENGES: readonly ChallengeName[] = ['turnLeft', 'turnRight', 'openMouth', 'moveCloser', 'moveFarther']
 
 /**
  * A random order of the local challenges — all of them by default, so every
- * run exercises two head axes plus the mouth. Random order matters as much as
- * on the server: a recording only replays if it happens to match the order.
+ * run exercises both turns, the mouth and both distances. Random order matters
+ * as much as on the server: a recording only replays if it happens to match.
  */
 export function pickLocalChallenges(
   count: number = LOCAL_CHALLENGES.length,

@@ -13,7 +13,7 @@ import {
   judge,
   l2normalize,
   preprocessRgba,
-} from '../src/identity'
+} from '../src/heavy/identity'
 
 function vec(...values: number[]): Float32Array {
   return Float32Array.from(values)

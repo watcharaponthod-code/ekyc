@@ -114,7 +114,7 @@ describe('copy quality', () => {
       ['multipleFaces', 'noFace', 'offCentre', 'tooClose', 'tooFar'].sort(),
     )
     expect(Object.keys(dict.challenge).sort()).toEqual(
-      ['center', 'closeEyes', 'nod', 'openMouth', 'smile', 'turnLeft', 'turnRight'].sort(),
+      ['center', 'closeEyes', 'moveCloser', 'moveFarther', 'nod', 'openMouth', 'smile', 'turnLeft', 'turnRight'].sort(),
     )
   })
 
@@ -222,7 +222,7 @@ describe('instructionFor — phases', () => {
   })
   it('every two-phase challenge has a phase-2 line in both languages', () => {
     for (const locale of ['th', 'en'] as const) {
-      for (const name of ['nod', 'closeEyes', 'openMouth', 'smile'] as const) {
+      for (const name of ['nod', 'closeEyes', 'openMouth', 'smile', 'moveCloser', 'moveFarther'] as const) {
         expect(strings(locale).challengePhase2[name]).toBeTruthy()
       }
     }

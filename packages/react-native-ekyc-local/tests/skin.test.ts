@@ -1,4 +1,4 @@
-import { DEFAULT_PATCHES, FACE_THUMB, patchMean, samplePatches, stableFaceBox } from '../src/skin'
+import { DEFAULT_PATCHES, FACE_THUMB, patchMean, samplePatches, stableFaceBox } from '../src/heavy/skin'
 
 function thumb(fill: (x: number, y: number) => [number, number, number]): Uint8Array {
   const out = new Uint8Array(FACE_THUMB * FACE_THUMB * 4)

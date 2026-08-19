@@ -1,40 +1,19 @@
 /**
  * `@ekyc/react-native-ekyc-local`
  *
- * 100 % on-device liveness + identity: ML Kit drives turn-left / turn-right /
- * open-mouth / nod, MobileFaceNet (TFLite, 5 MB) embeds every captured pose
- * and the frames are compared pairwise. No network, no server, no biometric
- * data leaves the phone.
+ * 100 % on-device liveness, light edition: ML Kit drives turn-left /
+ * turn-right / open-mouth / move-closer / move-farther as movements from the
+ * person's own neutral pose, with a face-continuity check across the run.
+ * No network, no model, no image processing — the verdict is the sequence.
  *
  * ```tsx
- * <LocalLivenessCamera
- *   reference={savedEmbedding}          // optional: verify against an enrolled face
- *   onResult={(r) => r.passed ? next(r.embedding) : retry(r.reasons)}
- * />
+ * <LocalLivenessCamera onResult={(r) => (r.passed ? next() : retry(r.reasons))} />
  * ```
+ *
+ * The MobileFaceNet + rPPG edition is under `@ekyc/react-native-ekyc-local/heavy`.
  */
 export { LocalLivenessCamera } from './LocalLivenessCamera'
-export type { LocalLivenessCameraProps, LocalResult, PulseRule, SessionReport } from './LocalLivenessCamera'
-export { FaceEmbedder, cropFace, faceThumbnail, flipHorizontal } from './embedder'
-export type { FaceCrop } from './embedder'
-export {
-  DEFAULT_CONSISTENCY_MIN,
-  DEFAULT_MATCH_MIN,
-  EMBEDDING_DIM,
-  EMBEDDING_INPUT,
-  base64ToBytes,
-  consistency,
-  cosine,
-  decodeJpeg,
-  embeddingFromJson,
-  embeddingToJson,
-  judge,
-  l2normalize,
-  preprocessRgba,
-} from './identity'
-export type { ConsistencyReport, DecodedImage, FrameEmbedding, LocalVerdict, Topology } from './identity'
+export type { ContinuityRule, LocalLivenessCameraProps, LocalResult, SessionReport } from './LocalLivenessCamera'
+export { ContinuityTracker, DEFAULT_CONTINUITY } from './continuity'
+export type { ContinuityOptions, ContinuityReport } from './continuity'
 export { LOCAL_CHALLENGES, pickLocalChallenges } from './challenges'
-export { DEFAULT_PULSE_MIN, PROMINENCE_CENTRE_DB, pulseLivenessScore } from './pulse'
-export type { PulseResult, Rgb } from './pulse'
-export { DEFAULT_PATCHES, FACE_THUMB, patchMean, samplePatches, stableFaceBox } from './skin'
-export type { RelRect } from './skin'

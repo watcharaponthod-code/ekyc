@@ -39,7 +39,16 @@ export type FaceSignal = {
   t: number
 }
 
-export type ChallengeName = 'center' | 'closeEyes' | 'turnLeft' | 'turnRight' | 'smile' | 'openMouth' | 'nod'
+export type ChallengeName =
+  | 'center'
+  | 'closeEyes'
+  | 'turnLeft'
+  | 'turnRight'
+  | 'smile'
+  | 'openMouth'
+  | 'nod'
+  | 'moveCloser'
+  | 'moveFarther'
 
 /**
  * How the user is positioned, independent of which challenge is active.

@@ -35,7 +35,7 @@ Number = Annotated[float, BeforeValidator(_finite)]
 Count = Annotated[int, BeforeValidator(lambda v: int(_finite(v)))]
 
 Purpose = Literal["enroll", "verify", "identify"]
-ChallengeName = Literal["center", "closeEyes", "turnLeft", "turnRight", "smile", "openMouth", "nod"]
+ChallengeName = Literal["center", "closeEyes", "turnLeft", "turnRight", "smile", "openMouth", "nod", "moveCloser", "moveFarther"]
 
 
 class ClientInfo(BaseModel):

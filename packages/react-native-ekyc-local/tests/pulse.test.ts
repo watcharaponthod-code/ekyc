@@ -1,4 +1,4 @@
-import { MIN_FRAMES, PROMINENCE_CENTRE_DB, pulseLivenessScore, type Rgb } from '../src/pulse'
+import { MIN_FRAMES, PROMINENCE_CENTRE_DB, pulseLivenessScore, type Rgb } from '../src/heavy/pulse'
 
 /** Deterministic Gaussian noise (Box–Muller over an LCG). */
 function rng(seed: number) {

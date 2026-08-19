@@ -1,17 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AccessibilityInfo, ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native'
-import { Camera, useCameraDevice, useCameraPermission, type CameraRef } from 'react-native-vision-camera'
-import {
-  createFaceDetectorOutput,
-  createImageFaceDetector,
-  type Face,
-  type ImageFaceDetector,
-} from 'react-native-vision-camera-face-detector'
+import { Camera, useCameraDevice, useCameraPermission } from 'react-native-vision-camera'
+import { createFaceDetectorOutput, type Face } from 'react-native-vision-camera-face-detector'
 
 import {
   DEFAULT_SESSION_OPTIONS,
   DirectionHint,
-  asFileUri,
   FrameOverlay,
   InstructionBanner,
   LivenessSession,
@@ -32,18 +26,15 @@ import {
   type StepMetric,
 } from '@ekyc/react-native-ekyc'
 
-import { FaceEmbedder, faceThumbnail } from './embedder'
-import { DEFAULT_CONSISTENCY_MIN, DEFAULT_MATCH_MIN, judge, type FrameEmbedding, type LocalVerdict, type Topology } from './identity'
 import { pickLocalChallenges } from './challenges'
-import { DEFAULT_PULSE_MIN, pulseLivenessScore, type PulseResult, type Rgb } from './pulse'
-import { DEFAULT_PATCHES, FACE_THUMB, samplePatches, stableFaceBox } from './skin'
+import { ContinuityTracker, DEFAULT_CONTINUITY, type ContinuityOptions, type ContinuityReport } from './continuity'
 
-export type PulseRule = 'off' | 'advisory' | 'enforce'
+export type ContinuityRule = 'off' | 'advisory' | 'enforce'
 
 /**
  * Everything a session measured, in one JSON-able record — what the app
  * appends to its session log and what `scripts/local_calibrate.py` reads.
- * Numbers only; no images, no embeddings.
+ * Numbers only; no images.
  */
 export type SessionReport = {
   at: string
@@ -52,30 +43,22 @@ export type SessionReport = {
   reasons: string[]
   /** Best value each step reached vs what it needed (from LivenessSession). */
   stepMetrics: Record<string, StepMetric>
-  /** Compared pairs and the worst one. */
-  consistency: { topology: Topology; min: number; weakest: [string, string] | null; pairs: { a: string; b: string; similarity: number }[] } | null
-  match: { score: number; ok: boolean } | null
-  pulse: PulseResult | null
-  thresholds: { consistencyMin: number; matchMin: number; pulseMin: number; pulseRule: PulseRule; topology: Topology }
-  timings: { captureMs: number; embedMs: number }
-  frames: number
-  /** The last diagnostic lines of this run (errors from the still detector / embedder / pulse), for remote debugging. */
+  /** Face continuity across the whole run (see `continuity.ts`). */
+  continuity: ContinuityReport | null
+  thresholds: { continuityRule: ContinuityRule; continuity: ContinuityOptions }
+  timings: { captureMs: number }
+  /** The last diagnostic lines of this run, for remote debugging. */
   log: string[]
 }
 
-export type LocalResult = LocalVerdict & {
-  /** rPPG result of the hold-still burst, or null when `pulseRule` is 'off'. */
-  pulse: PulseResult | null
-  /** The full numeric record of this session, for logging and tuning. */
+export type LocalResult = {
+  passed: boolean
+  reasons: string[]
+  continuity: ContinuityReport | null
   report: SessionReport
-  /** Embedding of the neutral frame — save it to enrol this person locally. */
-  embedding: Float32Array | null
-  /** Per-frame embeddings, for the debug screen. */
-  frames: FrameEmbedding[]
-  /** Wall-clock: challenge phase and embedding phase, ms. */
-  timings: { captureMs: number; embedMs: number }
   /** Which challenges were asked, in order (excluding `center`). */
   challenges: ChallengeName[]
+  timings: { captureMs: number }
 }
 
 export type LocalLivenessCameraProps = {
@@ -84,27 +67,18 @@ export type LocalLivenessCameraProps = {
   onProgress?: ((state: LivenessState) => void) | undefined
   /**
    * Challenges to ask, in order, `center` implied first. Default: a random
-   * order of turnLeft / turnRight / openMouth / nod (`pickLocalChallenges`).
+   * order of turnLeft / turnRight / openMouth / moveCloser / moveFarther
+   * (`pickLocalChallenges`).
    */
   challenges?: ChallengeName[] | undefined
-  /** A saved neutral embedding to verify against, or null to only check consistency. */
-  reference?: ArrayLike<number> | null | undefined
-  consistencyMin?: number | undefined
-  matchMin?: number | undefined
-  /** Share one embedder across screens so the model loads once. */
-  embedder?: FaceEmbedder | undefined
   /**
-   * rPPG pulse check after the challenges (silicone-mask defence): the user
-   * holds still for `pulseMs` while the face is snapshotted; the skin colour
-   * must carry a heartbeat. 'advisory' (default) reports the score without
-   * failing on it — it is calibrated on synthetic traces only; 'enforce'
-   * adds PULSE_ABSENT below `pulseMin`; 'off' skips the burst.
+   * Face-continuity check ("one face all the way through"): 'advisory'
+   * (default) reports it in the result without failing on it — its
+   * thresholds are set from real phones first; 'enforce' adds
+   * FACE_DISCONTINUITY; 'off' skips it.
    */
-  pulseRule?: PulseRule | undefined
-  pulseMs?: number | undefined
-  pulseMin?: number | undefined
-  /** Which pairs the identity check compares — see `Topology`. Default 'star'. */
-  topology?: Topology | undefined
+  continuityRule?: ContinuityRule | undefined
+  continuity?: Partial<ContinuityOptions> | undefined
   locale?: Locale
   theme?: EKYCTheme
   tuning?: ChallengeTuning
@@ -116,8 +90,6 @@ const CAMERA_CONSTRAINTS = [{ fps: 60 }]
 type Screen =
   | { kind: 'starting' }
   | { kind: 'capturing' }
-  | { kind: 'pulsing' }
-  | { kind: 'judging' }
   | { kind: 'result'; passed: boolean; reasons: string[] }
   | { kind: 'error'; message: string }
 
@@ -131,31 +103,29 @@ function log(message: string, detail?: unknown): void {
 }
 
 /**
- * The 100 %-on-device flow.
+ * The 100 %-on-device flow, light edition.
  *
  * Same coaching, same challenge engine and same UI as `EKYCCamera`, but no
- * server: after the last challenge the captured stills are re-detected with
- * ML Kit (exact face box + roll in the JPEG), embedded with MobileFaceNet and
- * compared pairwise. Pass = every pair looks like the same person (and, when a
- * `reference` is given, the neutral frame matches it).
+ * server and no model: the verdict is the challenge sequence itself. Every
+ * step is a *movement* judged relative to the person's own neutral frame
+ * (turn left/right, open-then-close the mouth, move closer/farther and back),
+ * with the head returning to the middle between steps, plus a
+ * face-continuity check across the whole run. Nothing is embedded, cropped
+ * or uploaded; the result is ready the moment the last step completes.
  *
- * What this proves: the person did the actions live and one face did all of
- * them. What it does not prove: that the face is not a screen, a print or a
- * mask — there is no PAD model on the phone in this build. See the README.
+ * What this proves: a cooperating person, continuously present, performed
+ * the requested movements live. What it does not prove: who they are, or
+ * that the face is not a screen/print — the server flow carries those layers.
+ * The MobileFaceNet/rPPG edition lives under `src/heavy/` for hosts that
+ * want it and can carry the extra native modules.
  */
 export function LocalLivenessCamera({
   onResult,
   onCancel,
   onProgress,
   challenges,
-  reference,
-  consistencyMin,
-  matchMin,
-  embedder,
-  pulseRule = 'advisory',
-  pulseMs = 7000,
-  pulseMin = DEFAULT_PULSE_MIN,
-  topology = 'star',
+  continuityRule = 'advisory',
+  continuity,
   locale = 'th',
   theme = defaultTheme,
   tuning,
@@ -169,7 +139,6 @@ export function LocalLivenessCamera({
   const [state, setState] = useState<LivenessState>(idleState)
   const [reduceMotion, setReduceMotion] = useState(false)
   const [live, setLive] = useState<FaceSignal | null>(null)
-  const cameraRef = useRef<CameraRef>(null)
 
   const onResultRef = useRef(onResult)
   onResultRef.current = onResult
@@ -179,242 +148,51 @@ export function LocalLivenessCamera({
 
   const session = useRef<LivenessSession | null>(null)
   const issued = useRef<ChallengeName[]>([])
-  /** key → snapshot path plus the live ML Kit box/roll at the moment it was grabbed (fallback if the still detector fails). */
-  const frames = useRef<Map<string, { uri: string; box: { x: number; y: number; w: number; h: number } | null; roll: number }>>(new Map())
-  /** Live box at the start of the pulse burst — fallback for the burst too. */
-  const burstBox = useRef<{ x: number; y: number; w: number; h: number } | null>(null)
-  const pending = useRef<Promise<void>[]>([])
-  const latest = useRef<FaceSignal | null>(null)
+  const tracker = useRef<ContinuityTracker>(new ContinuityTracker())
   const startedAt = useRef(0)
   const finished = useRef(false)
-  /** Burst frames: (device time, file uri) — sampled after capture. */
-  const burst = useRef<{ t: number; uri: string }[]>([])
 
-  const ownEmbedder = useMemo(() => embedder ?? new FaceEmbedder(), [embedder])
-  const stillDetector = useRef<ImageFaceDetector | null>(null)
+  const continuityOptions = useMemo<ContinuityOptions>(() => ({ ...DEFAULT_CONTINUITY, ...continuity }), [continuity])
 
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {})
-    // Warm the model while the user reads the first instruction.
-    ownEmbedder.load().catch((error: Error) => log('model load failed', error))
-  }, [ownEmbedder])
-
-  // ---- capture -----------------------------------------------------------
-
-  const snapshot = useCallback(async (key: string) => {
-    const t0 = Date.now()
-    try {
-      const camera = cameraRef.current
-      if (!camera) throw new Error('camera not mounted')
-      const live = latest.current
-      const image = await camera.takeSnapshot()
-      const path = await image.saveToTemporaryFileAsync('jpg', 90)
-      frames.current.set(key, { uri: path, box: live && live.count > 0 ? live.box : null, roll: live?.roll ?? 0 })
-      log('captured', `${key} ${Date.now() - t0}ms`)
-    } catch (error) {
-      log('capture failed', `${key}: ${(error as Error).message}`)
-      session.current?.abort('captureFailed')
-    }
   }, [])
 
-  /** Burst variant: grab now, encode later; returns the grab time or null. */
-  const snapshotBurst = useCallback(async (index: number): Promise<number | null> => {
-    const camera = cameraRef.current
-    if (!camera) return null
-    const t = Date.now()
-    try {
-      const image = await camera.takeSnapshot()
-      pending.current.push(
-        image
-          .saveToTemporaryFileAsync('jpg', 80)
-          .then((path) => {
-            burst.current.push({ t, uri: path })
-          })
-          .catch((error: Error) => log('burst encode failed', `${index}: ${error.message}`)),
-      )
-      return t
-    } catch (error) {
-      log('burst grab failed', `${index}: ${(error as Error).message}`)
-      return null
-    }
-  }, [])
+  // ---- verdict -----------------------------------------------------------
 
-  // The hold-still burst: snapshot the face as fast as the device allows for
-  // ~pulseMs. Frames are encoded off the critical path and sampled in judgeAll.
-  const runPulse = useCallback(async () => {
-    burst.current = []
-    if (pulseRule === 'off') return
-    burstBox.current = latest.current && latest.current.count > 0 ? latest.current.box : null
-    setScreen({ kind: 'pulsing' })
-    const started = Date.now()
-    let index = 0
-    while (Date.now() - started < pulseMs) {
-      const tick = Date.now()
-      const t = await snapshotBurst(index)
-      if (t !== null) index += 1
-      const elapsed = Date.now() - tick
-      if (elapsed < 40) await new Promise((resolve) => setTimeout(resolve, 40 - elapsed))
-    }
-    const span = Date.now() - started
-    log('pulse burst', `${index} frames in ${span}ms (${span ? Math.round((index * 1000) / span) : 0} fps)`)
-  }, [pulseRule, pulseMs, snapshotBurst])
-
-  /**
-   * rPPG over the burst: detect the face on the first usable frame, keep that
-   * (slightly grown) box for every frame — the user is holding still — read a
-   * 32x32 thumbnail per frame with one image op, average forehead + cheeks,
-   * and score the colour traces.
-   */
-  const measurePulse = useCallback(async (): Promise<PulseResult | null> => {
-    if (pulseRule === 'off') return null
-    const frames = [...burst.current].sort((a, b) => a.t - b.t)
-    if (frames.length === 0) return { score: 0, bpm: 0, prominenceDb: 0, frames: 0, spanMs: 0, samplingHz: 0, patches: 0, note: 'too_short' }
-    if (!stillDetector.current) {
-      stillDetector.current = createImageFaceDetector({ performanceMode: 'accurate', minFaceSize: 0.15 })
-    }
-    let box: { x: number; y: number; w: number; h: number } | null = null
-    for (const f of frames.slice(0, 3)) {
-      try {
-        const faces = stillDetector.current.detectFaces(asFileUri(f.uri))
-        if (faces.length === 0) continue
-        const face = faces.reduce((a, b) => (b.bounds.width > a.bounds.width ? b : a))
-        const fw = face.frameWidth || 1
-        const fh = face.frameHeight || 1
-        box = stableFaceBox({ x: face.bounds.x / fw, y: face.bounds.y / fh, w: face.bounds.width / fw, h: face.bounds.height / fh })
-        break
-      } catch (error) {
-        log('pulse still-detect failed', (error as Error).message)
+  const finish = useCallback(
+    (passedSteps: boolean, reasons: string[], now: number) => {
+      if (finished.current) return
+      finished.current = true
+      const report = continuityRule === 'off' ? null : tracker.current.report(now)
+      const allReasons = [...reasons]
+      if (report && !report.ok && continuityRule === 'enforce') allReasons.push('FACE_DISCONTINUITY')
+      const passed = passedSteps && allReasons.length === 0
+      const sessionReport: SessionReport = {
+        at: new Date().toISOString(),
+        challenges: issued.current,
+        passed,
+        reasons: allReasons,
+        stepMetrics: session.current?.state.stepMetrics ?? {},
+        continuity: report,
+        thresholds: { continuityRule, continuity: continuityOptions },
+        timings: { captureMs: now - startedAt.current },
+        log: [...RECENT_LOG],
       }
-    }
-    if (!box && burstBox.current) {
-      // The still detector gave nothing: use the live ML Kit box from the
-      // moment the burst started. Grown a little, it still covers the face.
-      box = stableFaceBox(burstBox.current, 0.1)
-      log('pulse box', 'live-frame fallback')
-    }
-    if (!box) return { score: 0, bpm: 0, prominenceDb: 0, frames: frames.length, spanMs: 0, samplingHz: 0, patches: 0, note: 'flat' }
-    const times: number[] = []
-    const colors: Rgb[][] = []
-    for (const f of frames) {
-      try {
-        const rgba = await faceThumbnail(f.uri, box, FACE_THUMB)
-        times.push(f.t)
-        colors.push(samplePatches(rgba, FACE_THUMB, DEFAULT_PATCHES))
-      } catch (error) {
-        log('pulse sample failed', (error as Error).message)
-      }
-    }
-    return pulseLivenessScore(times, colors)
-  }, [pulseRule])
-
-  // ---- judge -------------------------------------------------------------
-
-  const judgeAll = useCallback(async () => {
-    if (finished.current) return
-    finished.current = true
-    setScreen({ kind: 'judging' })
-    await Promise.all(pending.current)
-    pending.current = []
-    const captureMs = Date.now() - startedAt.current
-    if (session.current?.state.phase === 'failed') return
-
-    const t0 = Date.now()
-    const embeddings: FrameEmbedding[] = []
-    const reasons: string[] = []
-    if (!stillDetector.current) {
-      stillDetector.current = createImageFaceDetector({ performanceMode: 'accurate', minFaceSize: 0.15 })
-    }
-    for (const [key, frame] of frames.current) {
-      // 1. locate the face in the still (exact box + roll in the JPEG); if the
-      //    still detector throws or finds nothing, fall back to the live ML Kit
-      //    box captured with the frame — a slightly looser crop beats no crop.
-      let box = frame.box
-      let roll = frame.roll
-      let source = 'live-frame fallback'
-      try {
-        const faces = stillDetector.current.detectFaces(asFileUri(frame.uri))
-        if (faces.length > 0) {
-          const face = faces.reduce((a, b) => (b.bounds.width > a.bounds.width ? b : a))
-          const fw = face.frameWidth || 1
-          const fh = face.frameHeight || 1
-          box = { x: face.bounds.x / fw, y: face.bounds.y / fh, w: face.bounds.width / fw, h: face.bounds.height / fh }
-          roll = face.rollAngle
-          source = 'still'
-        } else {
-          log('no face in still', key)
-        }
-      } catch (error) {
-        log('still detect failed', `${key}: ${(error as Error).message}`)
-      }
-      if (!box) {
-        reasons.push('NO_FACE')
-        continue
-      }
-      // 2. embed
-      try {
-        const embedding = await ownEmbedder.embed({ uri: frame.uri, box, roll, mirrored: true })
-        embeddings.push({ key, embedding })
-        log('embedded', `${key} (${source})`)
-      } catch (error) {
-        log('embed failed', `${key}: ${(error as Error).message}`)
-        reasons.push('FRAME_UNREADABLE')
-      }
-    }
-    const pulse = await measurePulse()
-    if (pulse) log('pulse', `score=${pulse.score.toFixed(3)} bpm=${pulse.bpm.toFixed(0)} prom=${pulse.prominenceDb.toFixed(1)}dB frames=${pulse.frames} ${pulse.note}`)
-    if (pulse && pulseRule === 'enforce' && pulse.score < pulseMin) reasons.push('PULSE_ABSENT')
-    const embedMs = Date.now() - t0
-    const verdict = judge(embeddings, {
-      ...(consistencyMin !== undefined ? { consistencyMin } : {}),
-      ...(matchMin !== undefined ? { matchMin } : {}),
-      reference: reference ?? null,
-      topology,
-    })
-    const expected = 1 + issued.current.length
-    if (embeddings.length < expected && !reasons.includes('NO_FACE') && !reasons.includes('FRAME_UNREADABLE')) {
-      reasons.push('FRAME_MISSING')
-    }
-    const allReasons = [...new Set([...reasons, ...verdict.reasons])]
-    const passed = allReasons.length === 0
-    const neutral = embeddings.find((f) => f.key === 'neutral')?.embedding ?? null
-    log('verdict', `${passed ? 'pass' : 'fail'} ${allReasons.join(',') || '-'} min=${verdict.consistency.min.toFixed(3)} embed=${embedMs}ms`)
-    session.current?.notifyResult(passed)
-    setScreen({ kind: 'result', passed, reasons: allReasons })
-    const report: SessionReport = {
-      at: new Date().toISOString(),
-      challenges: issued.current,
-      passed,
-      reasons: allReasons,
-      stepMetrics: session.current?.state.stepMetrics ?? {},
-      consistency: verdict.consistency,
-      match: verdict.match ?? null,
-      pulse,
-      thresholds: { consistencyMin: consistencyMin ?? DEFAULT_CONSISTENCY_MIN, matchMin: matchMin ?? DEFAULT_MATCH_MIN, pulseMin, pulseRule, topology },
-      timings: { captureMs, embedMs },
-      frames: embeddings.length,
-      log: [...RECENT_LOG],
-    }
-    onResultRef.current({
-      ...verdict,
-      passed,
-      reasons: allReasons,
-      pulse,
-      report,
-      embedding: neutral,
-      frames: embeddings,
-      timings: { captureMs, embedMs },
-      challenges: issued.current,
-    })
-  }, [ownEmbedder, consistencyMin, matchMin, reference, measurePulse, pulseRule, pulseMin, topology])
+      log('verdict', `${passed ? 'pass' : 'fail'} ${allReasons.join(',') || '-'} continuity=${report ? `${report.ok} gap${report.maxGapMs}ms jump${report.maxJump.toFixed(2)}` : 'off'}`)
+      session.current?.notifyResult(passed)
+      setScreen({ kind: 'result', passed, reasons: allReasons })
+      onResultRef.current({ passed, reasons: allReasons, continuity: report, report: sessionReport, challenges: issued.current, timings: sessionReport.timings })
+    },
+    [continuityRule, continuityOptions],
+  )
 
   // ---- lifecycle ---------------------------------------------------------
 
   const begin = useCallback(() => {
-    frames.current.clear()
-    pending.current = []
-    burst.current = []
     finished.current = false
     issued.current = challenges ?? pickLocalChallenges()
+    tracker.current = new ContinuityTracker(continuityOptions)
     const now = Date.now()
     startedAt.current = now
     const next = new LivenessSession(
@@ -426,55 +204,23 @@ export function LocalLivenessCamera({
     setState(next.start(now))
     setScreen({ kind: 'capturing' })
     log('session', issued.current.join(','))
-  }, [challenges, tuning])
+  }, [challenges, tuning, continuityOptions])
 
   const handleEvent = useCallback(
     (event: SessionEvent) => {
-      if (event.type === 'capture') {
-        pending.current.push(snapshot(event.stepIndex === 0 ? 'neutral' : event.challenge))
-        return
-      }
-      if (event.type === 'stepComplete') return
+      if (event.type === 'capture' || event.type === 'stepComplete') return
       if (event.type === 'complete') {
-        void runPulse().then(judgeAll)
+        finish(true, [], Date.now())
         return
       }
       log(
         'liveness failed',
         `${event.reason} at step ${event.stepIndex} (${event.challenge ?? '-'}) ` +
-          Object.values(event.stepMetrics).map((m) => `${m.challenge}:${m.best.toFixed(2)}/${m.needed.toFixed(2)}`).join(' '),
+          Object.values(event.stepMetrics).map((m) => `${m.challenge}${m.phase ? `#${m.phase}` : ''}:${m.best.toFixed(2)}/${m.needed.toFixed(2)}`).join(' '),
       )
-      setScreen({ kind: 'result', passed: false, reasons: [`LOCAL_${event.reason}`] })
-      // A capture-phase failure is a session too — the log needs it, with the
-      // metrics that say how close each step got.
-      const reasons = [`LOCAL_${event.reason}`]
-      const report: SessionReport = {
-        at: new Date().toISOString(),
-        challenges: issued.current,
-        passed: false,
-        reasons,
-        stepMetrics: event.stepMetrics,
-        consistency: null,
-        match: null,
-        pulse: null,
-        thresholds: { consistencyMin: consistencyMin ?? DEFAULT_CONSISTENCY_MIN, matchMin: matchMin ?? DEFAULT_MATCH_MIN, pulseMin, pulseRule, topology },
-        timings: { captureMs: Date.now() - startedAt.current, embedMs: 0 },
-        frames: 0,
-        log: [...RECENT_LOG],
-      }
-      onResultRef.current({
-        passed: false,
-        reasons,
-        consistency: { min: 1, weakest: null, pairs: [], topology },
-        pulse: null,
-        report,
-        embedding: null,
-        frames: [],
-        timings: report.timings,
-        challenges: issued.current,
-      })
+      finish(false, [`LOCAL_${event.reason}`], Date.now())
     },
-    [snapshot, runPulse, judgeAll, consistencyMin, matchMin, pulseMin, pulseRule, topology],
+    [finish],
   )
   handleEventRef.current = handleEvent
 
@@ -502,12 +248,17 @@ export function LocalLivenessCamera({
       const current = session.current
       if (!current) return
       const signal = toSignal(faces)
-      latest.current = signal
       if (debug) setLive(signal)
+      if (current.state.phase === 'running') tracker.current.feed(signal)
       const next = current.feed(signal)
       onProgressRef.current?.(next)
       setState((prev) =>
-        prev.phase === next.phase && prev.stepIndex === next.stepIndex && prev.framing === next.framing && prev.holdProgress === next.holdProgress
+        prev.phase === next.phase &&
+        prev.stepIndex === next.stepIndex &&
+        prev.stepPhase === next.stepPhase &&
+        prev.awaitingRecenter === next.awaitingRecenter &&
+        prev.framing === next.framing &&
+        prev.holdProgress === next.holdProgress
           ? prev
           : next,
       )
@@ -576,11 +327,9 @@ export function LocalLivenessCamera({
 
   const holding = state.holdProgress > 0.05
   const instruction =
-    screen.kind === 'pulsing'
-      ? t.pulseHold
-      : screen.kind === 'judging' || state.phase === 'uploading'
-        ? t.uploading
-        : instructionFor(locale, state.framing, state.awaitingRecenter ? 'center' : state.challenge, holding, state.awaitingRecenter ? 0 : state.stepPhase)
+    state.phase === 'uploading'
+      ? t.uploading
+      : instructionFor(locale, state.framing, state.awaitingRecenter ? 'center' : state.challenge, holding, state.awaitingRecenter ? 0 : state.stepPhase)
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
@@ -588,10 +337,9 @@ export function LocalLivenessCamera({
         <Camera
           style={StyleSheet.absoluteFill}
           device={device}
-          isActive={screen.kind === 'pulsing' || (screen.kind === 'capturing' && (state.phase === 'running' || state.phase === 'uploading'))}
+          isActive={screen.kind === 'capturing' && state.phase === 'running'}
           outputs={outputs}
           constraints={CAMERA_CONSTRAINTS}
-          ref={cameraRef}
           implementationMode="compatible"
           onError={(error) => {
             log('camera error', error)
@@ -601,16 +349,9 @@ export function LocalLivenessCamera({
         />
       </View>
 
-      <FrameOverlay
-        size={{ x: 0, y: 0, width, height }}
-        theme={theme}
-        phase={state.phase}
-        framing={state.framing}
-        progress={state.holdProgress}
-        reduceMotion={reduceMotion}
-      />
+      <FrameOverlay size={{ x: 0, y: 0, width, height }} theme={theme} phase={state.phase} framing={state.framing} progress={state.holdProgress} reduceMotion={reduceMotion} />
 
-      {state.framing === 'ok' && state.phase === 'running' ? (
+      {state.framing === 'ok' && state.phase === 'running' && !state.awaitingRecenter ? (
         <DirectionHint challenge={state.challenge} width={width} height={height} theme={theme} reduceMotion={reduceMotion} />
       ) : null}
 
@@ -625,7 +366,7 @@ export function LocalLivenessCamera({
         <View style={styles.bottom} pointerEvents="box-none">
           <InstructionBanner text={instruction} theme={theme} reduceMotion={reduceMotion} tone={state.framing === 'multipleFaces' ? 'warning' : 'normal'} />
           <View style={styles.dots}>
-            {screen.kind === 'judging' || (state.phase === 'uploading' && screen.kind !== 'pulsing') ? (
+            {state.phase === 'uploading' ? (
               <ActivityIndicator color={theme.colors.accent} />
             ) : (
               <StepDots count={state.stepCount} current={state.stepIndex} theme={theme} label={t.a11y.progress(Math.min(state.stepIndex + 1, state.stepCount), state.stepCount)} />
@@ -634,8 +375,8 @@ export function LocalLivenessCamera({
           {debug ? (
             <Text style={[styles.debug, { color: theme.colors.textDim }]}>
               {(live
-                ? `yaw ${live.yaw.toFixed(1)}  pitch ${live.pitch.toFixed(1)}  mouth ${live.mouthOpen.toFixed(2)}  eyes ${live.leftEye.toFixed(2)}/${live.rightEye.toFixed(2)}  w ${live.box.w.toFixed(2)}`
-                : 'no frames yet') + '\n' + RECENT_LOG.slice(-4).join('\n')}
+                ? `yaw ${live.yaw.toFixed(1)}  pitch ${live.pitch.toFixed(1)}  mouth ${live.mouthOpen.toFixed(2)}  w ${live.box.w.toFixed(2)}  n=${live.count}  phase ${state.stepPhase + 1}/${state.phaseCount}${state.awaitingRecenter ? ' recenter' : ''}`
+                : 'no frames yet') + '\n' + RECENT_LOG.slice(-3).join('\n')}
             </Text>
           ) : null}
         </View>
@@ -657,7 +398,18 @@ function Notice({ theme, text, action, onPress }: { theme: EKYCTheme; text: stri
   )
 }
 
-const idleState: LivenessState = { phase: 'idle', stepIndex: 0, stepCount: 1, challenge: null, holdProgress: 0, framing: 'noFace', stepMetrics: {}, stepPhase: 0, phaseCount: 1, awaitingRecenter: false }
+const idleState: LivenessState = {
+  phase: 'idle',
+  stepIndex: 0,
+  stepCount: 1,
+  challenge: null,
+  holdProgress: 0,
+  framing: 'noFace',
+  stepMetrics: {},
+  stepPhase: 0,
+  phaseCount: 1,
+  awaitingRecenter: false,
+}
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
@@ -670,5 +422,5 @@ const styles = StyleSheet.create({
   debug: { textAlign: 'center', fontSize: 11, fontVariant: ['tabular-nums'], paddingHorizontal: 16 },
   notice: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 20 },
   noticeButton: { paddingHorizontal: 24, height: 48, borderRadius: 14, justifyContent: 'center' },
-  noticeButtonText: { color: '#0A0E1A', fontSize: 16, fontWeight: '700' },
+  noticeButtonText: { fontSize: 16, fontWeight: '700' },
 })

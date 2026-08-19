@@ -1,7 +1,7 @@
 {
   "name": "@ekyc/react-native-ekyc-local",
   "version": "0.1.0",
-  "description": "100% on-device liveness (turn / open mouth / nod via ML Kit) with a MobileFaceNet identity check across the captured poses. No server.",
+  "description": "100% on-device liveness (turn / open mouth / move closer & farther via ML Kit) with a face-continuity check. No server, no model. The MobileFaceNet + rPPG edition ships as ./heavy.",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "files": [
@@ -18,15 +18,12 @@
   },
   "peerDependencies": {
     "@ekyc/react-native-ekyc": "*",
-    "expo-image-manipulator": "*",
     "react": ">=19.0.0",
     "react-native": ">=0.79.0",
-    "react-native-fast-tflite": ">=3.0.0",
     "react-native-nitro-modules": ">=0.35.0",
     "react-native-svg": ">=15.0.0",
     "react-native-vision-camera": ">=5.0.0",
-    "react-native-vision-camera-face-detector": ">=2.0.0",
-    "expo-asset": "*"
+    "react-native-vision-camera-face-detector": ">=2.0.0"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
@@ -36,5 +33,22 @@
     "typescript": "~6.0.3"
   },
   "license": "MIT",
-  "sideEffects": false
+  "sideEffects": false,
+  "peerDependenciesMeta": {
+    "expo-asset": {
+      "optional": true
+    },
+    "expo-image-manipulator": {
+      "optional": true
+    },
+    "react-native-fast-tflite": {
+      "optional": true
+    }
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./heavy": "./src/heavy/index.ts",
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  }
 }

@@ -1,4 +1,4 @@
-import { flipHorizontal } from '../src/identity'
+import { flipHorizontal } from '../src/heavy/identity'
 
 describe('flipHorizontal', () => {
   it('mirrors columns and keeps rows', () => {

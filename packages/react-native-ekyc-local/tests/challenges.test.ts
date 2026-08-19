@@ -12,17 +12,18 @@ function seeded(seed: number): () => number {
 }
 
 describe('pickLocalChallenges', () => {
-  it('asks all four by default, each exactly once, in a shuffled order', () => {
-    const picked = pickLocalChallenges(4, seeded(1))
+  it('asks all five by default, each exactly once, in a shuffled order', () => {
+    const picked = pickLocalChallenges(undefined, seeded(1))
     expect([...picked].sort()).toEqual([...LOCAL_CHALLENGES].sort())
+    expect(LOCAL_CHALLENGES).toEqual(['turnLeft', 'turnRight', 'openMouth', 'moveCloser', 'moveFarther'])
   })
   it('the order varies between runs', () => {
-    const orders = new Set(Array.from({ length: 30 }, (_, i) => pickLocalChallenges(4, seeded(i + 1)).join(',')))
+    const orders = new Set(Array.from({ length: 30 }, (_, i) => pickLocalChallenges(undefined, seeded(i + 1)).join(',')))
     expect(orders.size).toBeGreaterThan(3)
   })
   it('clamps the count', () => {
     expect(pickLocalChallenges(0)).toHaveLength(1)
-    expect(pickLocalChallenges(9)).toHaveLength(4)
+    expect(pickLocalChallenges(9)).toHaveLength(5)
   })
 })
 
