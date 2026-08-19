@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, View } from 'react-native'
+import { Alert, Pressable, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native'
 import { File, Paths } from 'expo-file-system'
 import * as Sharing from 'expo-sharing'
 import { IntroView, defaultTheme, type EKYCTheme } from '@ekyc/react-native-ekyc'
@@ -25,7 +25,7 @@ import {
 } from '@ekyc/react-native-ekyc-local'
 
 /** Bumped per published APK so a phone can prove which build it runs. */
-const APP_BUILD = 6
+const APP_BUILD = 7
 
 /**
  * Light theme — deliberately the opposite of the server demo's dark one, so
@@ -51,6 +51,40 @@ const theme: EKYCTheme = {
 const TEMPLATE_FILE = new File(Paths.document, 'ekyc-local-template.json')
 /** One JSON line per session — numbers only, no images or embeddings. This is what tuning reads. */
 const LOG_FILE = new File(Paths.document, 'ekyc-local-sessions.jsonl')
+/**
+ * Developer-only: where to POST the log over the LAN (`scripts/log_receiver.py`
+ * on the laptop prints the address). Empty = off. This is the *only* network
+ * call in the app, it is opt-in, and it carries numbers only.
+ */
+const RECEIVER_FILE = new File(Paths.document, 'ekyc-local-receiver.txt')
+
+function loadReceiver(): string {
+  try {
+    return RECEIVER_FILE.exists ? RECEIVER_FILE.textSync().trim() : ''
+  } catch {
+    return ''
+  }
+}
+
+async function sendLog(url: string): Promise<string> {
+  if (!LOG_FILE.exists) throw new Error('ยังไม่มี log')
+  const base = url.replace(/\/+$/, '')
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8000)
+  try {
+    const res = await fetch(`${base}/ingest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-ndjson' },
+      body: LOG_FILE.textSync(),
+      signal: controller.signal,
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const body = (await res.json()) as { added?: number; sessions?: number }
+    return `ส่งแล้ว: ใหม่ ${body.added ?? '?'} รอบ (คอมมีทั้งหมด ${body.sessions ?? '?'} รอบ)`
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 function appendLog(line: string): void {
   try {
@@ -79,6 +113,17 @@ export default function App() {
   const [last, setLast] = useState<{ mode: Mode; result: LocalResult } | null>(null)
   const embedder = useMemo(() => new FaceEmbedder(), [])
   const [modelState, setModelState] = useState('loading model…')
+  const [receiver, setReceiver] = useState<string>(() => loadReceiver())
+  const [autoSend, setAutoSend] = useState(false)
+  const [sendState, setSendState] = useState<string>('')
+
+  useEffect(() => {
+    try {
+      RECEIVER_FILE.write(receiver)
+    } catch {
+      /* ignore */
+    }
+  }, [receiver])
 
   useEffect(() => {
     embedder
@@ -91,6 +136,11 @@ export default function App() {
     (mode: Mode, result: LocalResult) => {
       setLast({ mode, result })
       appendLog(JSON.stringify({ mode, ...result.report }))
+      if (autoSend && receiver.trim()) {
+        sendLog(receiver.trim())
+          .then(setSendState)
+          .catch((e: Error) => setSendState(`ส่งไม่สำเร็จ: ${e.message}`))
+      }
       if (mode === 'enroll' && result.passed && result.embedding) {
         try {
           TEMPLATE_FILE.write(embeddingToJson(result.embedding))
@@ -100,7 +150,7 @@ export default function App() {
         }
       }
     },
-    [],
+    [autoSend, receiver],
   )
 
   if (screen.kind === 'intro') {
@@ -220,6 +270,38 @@ export default function App() {
             })()
           }}
         />
+        <Text style={styles.label}>ส่ง log ไปคอมผ่าน Wi-Fi (สำหรับปรับเกณฑ์)</Text>
+        <Text style={styles.body}>รัน `python packages/react-native-ekyc-local/scripts/log_receiver.py` บนคอม แล้วพิมพ์ที่อยู่ที่มันบอก (คอมและมือถือต้องอยู่ Wi-Fi เดียวกัน) — ส่งเฉพาะตัวเลข ไม่มีรูป</Text>
+        <TextInput
+          style={styles.input}
+          value={receiver}
+          onChangeText={setReceiver}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          placeholder="http://192.168.1.20:8765"
+          placeholderTextColor={theme.colors.textDim}
+        />
+        <Button
+          label="ส่ง log ไปคอมตอนนี้"
+          onPress={() => {
+            const url = receiver.trim()
+            if (!url) {
+              Alert.alert('ยังไม่ได้ใส่ที่อยู่คอม', 'พิมพ์ที่อยู่ที่ log_receiver.py แสดง เช่น http://192.168.1.20:8765')
+              return
+            }
+            setSendState('กำลังส่ง…')
+            sendLog(url)
+              .then(setSendState)
+              .catch((e: Error) => setSendState(`ส่งไม่สำเร็จ: ${e.message} — เช็คว่า receiver รันอยู่และอยู่ Wi-Fi เดียวกัน`))
+          }}
+        />
+        <Button
+          label={autoSend ? 'ส่งอัตโนมัติหลังทุกรอบ: เปิด' : 'ส่งอัตโนมัติหลังทุกรอบ: ปิด'}
+          variant="ghost"
+          onPress={() => setAutoSend((v) => !v)}
+        />
+        {sendState ? <Text style={styles.meta}>{sendState}</Text> : null}
         <Button
           label="ล้าง log"
           variant="ghost"
@@ -264,5 +346,6 @@ const styles = StyleSheet.create({
   card: { backgroundColor: theme.colors.surface, borderRadius: 14, padding: 14, marginTop: 8 },
   footnote: { color: theme.colors.textDim, fontSize: 12, lineHeight: 18, marginTop: 24 },
   button: { height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16 },
+  input: { height: 48, borderRadius: 12, paddingHorizontal: 14, backgroundColor: theme.colors.surface, color: theme.colors.text, fontSize: 15, borderWidth: 1, borderColor: 'rgba(15, 23, 42, 0.15)' },
   buttonText: { fontSize: 15, fontWeight: '700' },
 })

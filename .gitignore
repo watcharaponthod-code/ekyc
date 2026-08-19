@@ -31,3 +31,4 @@ __pycache__/
 # local Android build outputs
 *.apk
 *.aab
+/received/
