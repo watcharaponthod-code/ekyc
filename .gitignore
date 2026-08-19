@@ -21,8 +21,9 @@ __pycache__/
 # local test fixtures pulled from public datasets, never redistributed
 /server/tests/fixtures/
 
-# local Claude Code config
-.claude/
+# local Claude Code config (project skills are shared on purpose)
+.claude/*
+!.claude/skills/
 
 # python
 /server/.venv/
